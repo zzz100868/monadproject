@@ -16,7 +16,7 @@
 
 ---
 
-## 2) 前置准备（必须满足）
+## 2) 前置准备
 
 Day 6 建立在 Day 5 之上，请先确认：
 
@@ -32,7 +32,7 @@ forge test --match-contract "Day1|Day2|Day3|Day4" -v
 
 ---
 
-## 3) 当天完成标准（Definition of Done）
+## 3) 当天完成标准
 
 - `forge test --match-contract Day6FundingTest -vvv` 全部通过（6 个测试）
 - 多头在 mark > index 时支付资金费

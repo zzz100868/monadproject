@@ -16,7 +16,7 @@
 
 ---
 
-## 2) 前置准备（必须满足）
+## 2) 前置准备
 
 Day 7 建立在 Day 6 之上，请先确认：
 
@@ -31,7 +31,7 @@ forge test --match-contract "Day1|Day2|Day3|Day4|Day6" -v
 
 ---
 
-## 3) 当天完成标准（Definition of Done）
+## 3) 当天完成标准
 
 - `forge test --match-contract Day7 -vvv` 全部通过（5 个测试）
 - 健康账户无法被清算

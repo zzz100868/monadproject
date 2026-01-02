@@ -15,7 +15,7 @@
 
 ---
 
-## 2) 前置准备（必须满足）
+## 2) 前置准备
 
 Day4 建立在 Day3 之上，请先确认：
 
@@ -31,7 +31,7 @@ forge test --match-contract Day3MatchingTest -vvv
 
 ---
 
-## 3) 当天完成标准（Definition of Done）
+## 3) 当天完成标准
 
 - `forge test --match-contract Day4PriceUpdateTest -vvv` 全部通过（4 个测试）
 - Operator 可成功调用 `updateIndexPrice()`

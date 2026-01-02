@@ -14,7 +14,7 @@
 
 ---
 
-## 2) 前置准备（必须满足）
+## 2) 前置准备
 
 Day3 建立在 Day2 之上，请先确认：
 
@@ -30,7 +30,7 @@ forge test --match-contract Day2OrderbookTest -vvv
 
 ---
 
-## 3) 当天完成标准（Definition of Done）
+## 3) 当天完成标准
 
 - `forge test --match-contract Day3MatchingTest -vvv` 全部通过
 - 部分成交后订单 `amount` 正确减少

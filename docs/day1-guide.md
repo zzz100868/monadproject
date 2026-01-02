@@ -29,7 +29,7 @@
 
 ---
 
-## 3) 当天完成标准（Definition of Done）
+## 3) 当天完成标准
 
 - 合约：`deposit/withdraw` 可用；`margin()` 可读。
 - 测试：`contract/test/Day1Margin.t.sol` 全部通过。

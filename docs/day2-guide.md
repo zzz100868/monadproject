@@ -15,7 +15,7 @@
 
 ---
 
-## 2) 前置准备（必须满足）
+## 2) 前置准备
 
 Day2 是建立在 Day1 之上的，请先确认：
 
@@ -31,7 +31,7 @@ forge test --match-contract Day1MarginTest -vvv
 
 ---
 
-## 3) 当天完成标准（Definition of Done）
+## 3) 当天完成标准
 
 - `forge test --match-contract Day2OrderbookTest -vvv` 全部通过
 - 买单链表始终保持：**价格从高到低**（同价 FIFO）

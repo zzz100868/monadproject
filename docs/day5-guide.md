@@ -15,7 +15,7 @@
 
 ---
 
-## 2) 前置准备（必须满足）
+## 2) 前置准备
 
 Day 5 建立在 Day 4 之上，请先确认：
 
@@ -31,7 +31,7 @@ Day 5 建立在 Day 4 之上，请先确认：
 
 ---
 
-## 3) 当天完成标准（Definition of Done）
+## 3) 当天完成标准
 
 - Indexer 能正确解析 `MarginDeposited`、`OrderPlaced`、`TradeExecuted` 等事件
 - GraphQL API 可查询 `trades`、`orders`、`candles`
