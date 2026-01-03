@@ -44,7 +44,7 @@ export const OrderForm: React.FC = observer(() => {
         side,
         orderType,
         price: orderType === OrderType.MARKET ? undefined : price,
-        amount: (parsedAmount * leverage).toString(),
+        amount: parsedAmount.toString(),
         hintId,
       });
       setAmount('');
@@ -120,7 +120,7 @@ export const OrderForm: React.FC = observer(() => {
         <div className="bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 space-y-1">
           <div className="flex justify-between text-[10px] text-gray-500 uppercase">
             <span>Deposit</span>
-            <span className="text-white font-mono">{availableMargin.toFixed(4)} ETH</span>
+            <span className="text-white font-mono">{availableMargin.toFixed(4)} USD</span>
           </div>
           <div className="flex flex-col gap-2">
             <input
@@ -192,7 +192,7 @@ export const OrderForm: React.FC = observer(() => {
       <div className="space-y-3 shrink-0">
         <div className="bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 flex items-center justify-between group focus-within:border-nebula-violet/50 transition-colors">
           <div className="flex flex-col">
-            <label className="text-[10px] text-gray-500 uppercase">Margin (Cost)</label>
+            <label className="text-[10px] text-gray-500 uppercase">Amount (ETH)</label>
             <input
               type="text"
               placeholder="1 (units)"
@@ -236,12 +236,13 @@ export const OrderForm: React.FC = observer(() => {
 
         {/* Position Size Display */}
         <div className="flex justify-between items-center text-xs px-1">
-          <span className="text-gray-400">Position Size</span>
+          <span className="text-gray-400">Est. Cost</span>
           <span className="text-white font-mono">
             {(() => {
-              const margin = parseFloat(amount) || 0;
-              const size = margin * leverage;
-              return size > 0 ? `${size.toLocaleString(undefined, { maximumFractionDigits: 4 })} ETH` : '--';
+              const qty = parseFloat(amount) || 0;
+              const p = parseFloat(price) || (markPrice > 0n ? Number(formatEther(markPrice)) : 0);
+              const cost = (qty * p) / leverage;
+              return cost > 0 ? `${cost.toLocaleString(undefined, { maximumFractionDigits: 4 })} USD` : '--';
             })()}
           </span>
         </div>
@@ -274,9 +275,9 @@ export const OrderForm: React.FC = observer(() => {
       <div className="mt-auto pt-4">
         <div className="grid grid-cols-2 gap-y-2 text-xs border-t border-white/5 pt-4">
           <div className="text-gray-500">Available</div>
-          <div className="text-white text-right font-mono">{availableMargin.toFixed(4)} ETH</div>
+          <div className="text-white text-right font-mono">{availableMargin.toFixed(4)} USD</div>
           <div className="text-gray-500">Locked</div>
-          <div className="text-white text-right font-mono">{locked.toFixed(4)} ETH</div>
+          <div className="text-white text-right font-mono">{locked.toFixed(4)} USD</div>
           <div className="text-gray-500">Order Type</div>
           <div className="text-right font-mono text-gray-300">{orderType}</div>
         </div>

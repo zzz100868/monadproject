@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Address, Hash, parseEther } from 'viem';
 import { EXCHANGE_ABI } from '../onchain/abi';
 import { EXCHANGE_ADDRESS, EXCHANGE_DEPLOY_BLOCK } from '../onchain/config';
-import { chain, getFallbackWalletClient, getWalletClient, publicClient, fallbackAccount } from '../onchain/client';
+import { chain, getWalletClient, publicClient, fallbackAccount } from '../onchain/client';
 import { OrderBookItem, OrderSide, OrderType, PositionSnapshot, Trade } from '../types';
 
 interface OrderStruct {
@@ -92,49 +92,80 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | undefined>();
 
   // ============================================
-  // 合约交互函数 - TODO: 学生需要实现
+  // 合约交互函数
   // ============================================
 
   /**
+   * 刷新余额数据
+   */
+  const refresh = useCallback(async () => {
+    if (!EXCHANGE_ADDRESS || !account) return;
+    setSyncing(true);
+    try {
+      const marginBal = await publicClient.readContract({
+        address: EXCHANGE_ADDRESS,
+        abi: EXCHANGE_ABI,
+        functionName: 'margin' as const,
+        args: [account],
+      }) as bigint;
+      setMargin(marginBal);
+      setError(undefined);
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setSyncing(false);
+    }
+  }, [account]);
+
+  /**
    * 存入保证金
-   * TODO: 实现此函数
-   * 
-   * 步骤:
-   * 1. 获取钱包客户端
-   * 2. 调用合约的 deposit() 函数，附带 ETH
-   * 3. 等待交易确认
-   * 4. 刷新数据
    */
   const deposit = useCallback(async (amount: string) => {
-    console.log('TODO: Implement deposit', amount);
-    setError('deposit 功能尚未实现，请完成 useExchange.tsx 中的 deposit 函数');
-  }, []);
+    try {
+      const walletClient = await getWalletClient();
+      if (!walletClient) throw new Error('No wallet connected');
+
+      const hash = await walletClient.writeContract({
+        address: EXCHANGE_ADDRESS!,
+        abi: EXCHANGE_ABI,
+        functionName: 'deposit',
+        value: parseEther(amount),
+        account: walletClient.account,
+        chain: chain,
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refresh();
+    } catch (e: any) {
+      setError(e.message || 'Deposit failed');
+    }
+  }, [refresh]);
 
   /**
    * 提取保证金
-   * TODO: 实现此函数
-   * 
-   * 步骤:
-   * 1. 获取钱包客户端
-   * 2. 调用合约的 withdraw(amount) 函数
-   * 3. 等待交易确认
-   * 4. 刷新数据
    */
   const withdraw = useCallback(async (amount: string) => {
-    console.log('TODO: Implement withdraw', amount);
-    setError('withdraw 功能尚未实现，请完成 useExchange.tsx 中的 withdraw 函数');
-  }, []);
+    try {
+      const walletClient = await getWalletClient();
+      if (!walletClient) throw new Error('No wallet connected');
+
+      const hash = await walletClient.writeContract({
+        address: EXCHANGE_ADDRESS!,
+        abi: EXCHANGE_ABI,
+        functionName: 'withdraw',
+        args: [parseEther(amount)],
+        account: walletClient.account,
+        chain: chain,
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refresh();
+    } catch (e: any) {
+      setError(e.message || 'Withdraw failed');
+    }
+  }, [refresh]);
 
   /**
    * 下单
-   * TODO: 实现此函数
-   * 
-   * 步骤:
-   * 1. 获取钱包客户端
-   * 2. 解析参数 (side -> isBuy, price, amount, hintId)
-   * 3. 调用合约的 placeOrder(isBuy, price, amount, hintId) 函数
-   * 4. 等待交易确认
-   * 5. 刷新数据
+   * TODO: Day 2 实现
    */
   const placeOrder = useCallback(async (params: {
     side: OrderSide;
@@ -149,41 +180,11 @@ export function ExchangeProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * 取消订单
-   * TODO: 实现此函数
-   * 
-   * 步骤:
-   * 1. 获取钱包客户端
-   * 2. 调用合约的 cancelOrder(orderId) 函数
-   * 3. 等待交易确认
-   * 4. 刷新数据
+   * TODO: Day 2 实现
    */
   const cancelOrder = useCallback(async (orderId: string) => {
     console.log('TODO: Implement cancelOrder', orderId);
     setError('cancelOrder 功能尚未实现，请完成 useExchange.tsx 中的 cancelOrder 函数');
-  }, []);
-
-  /**
-   * 刷新所有数据
-   * TODO: 实现此函数
-   * 
-   * 步骤:
-   * 1. 读取用户余额 margin(account)
-   * 2. 读取用户持仓 getPosition(account)
-   * 3. 读取标记价和指数价 markPrice(), indexPrice()
-   * 4. 读取订单簿 (遍历 bestBuyId/bestSellId 链表)
-   * 5. 读取用户的挂单
-   * 6. 读取最近成交 (TradeExecuted 事件)
-   */
-  const refresh = useCallback(async () => {
-    console.log('TODO: Implement refresh');
-    setSyncing(true);
-
-    // 示例: 设置一些模拟数据供 UI 显示
-    setMarkPrice(parseEther('100'));
-    setIndexPrice(parseEther('100'));
-    setMargin(parseEther('10'));
-
-    setSyncing(false);
   }, []);
 
   // ============================================

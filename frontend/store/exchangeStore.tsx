@@ -172,15 +172,38 @@ class ExchangeStore {
   };
 
   formatOrderBook = (orders: OrderStruct[], isBuy: boolean): OrderBookItem[] => {
+    // 1. Filter valid orders
     const filtered = orders.filter((o) => o.isBuy === isBuy && o.amount > 0n);
-    let running = 0;
-    const rows = filtered.map((o) => {
+
+    // 2. Aggregate by price
+    const aggregated = new Map<number, number>();
+    filtered.forEach((o) => {
+      const price = Number(formatEther(o.price));
       const size = Number(formatEther(o.amount));
-      running += size;
-      return { price: Number(formatEther(o.price)), size, total: running, depth: 0 };
+      aggregated.set(price, (aggregated.get(price) || 0) + size);
     });
-    const maxTotal = rows.reduce((m, r) => (r.total > m ? r.total : m), 0);
-    return rows.map((r) => ({
+
+    // 3. Convert to array
+    const rows = Array.from(aggregated.entries()).map(([price, size]) => ({
+      price,
+      size,
+      total: 0,
+      depth: 0,
+    }));
+
+    // 4. Sort: Bids Descending / Asks Ascending
+    rows.sort((a, b) => (isBuy ? b.price - a.price : a.price - b.price));
+
+    // 5. Calculate cumulative total
+    let running = 0;
+    const result = rows.map((r) => {
+      running += r.size;
+      return { ...r, total: running };
+    });
+
+    // 6. Calculate relative depth
+    const maxTotal = result.length > 0 ? result[result.length - 1].total : 0;
+    return result.map((r) => ({
       ...r,
       depth: maxTotal > 0 ? Math.min(100, Math.round((r.total / maxTotal) * 100)) : 0,
     }));
