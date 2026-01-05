@@ -18,6 +18,7 @@ export const chain = anvil
 export const publicClient = createPublicClient({
   chain,
   transport: http(RPC_URL),
+  pollingInterval: 500, // 500ms 轮询，配合 Anvil 1秒出块
 });
 
 export const fallbackAccount = ACCOUNTS[0];

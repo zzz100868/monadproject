@@ -439,12 +439,37 @@ cd contract
 forge test --match-contract Day2OrderbookTest -vvv
 ```
 
-### 5.2 用前端做一次肉眼验证（可选）
+预期：8 个测试全部通过。
 
-如果你跑本仓库前端，下单时通常会把输入用 `parseEther` 转为 `1e18` 精度；你只要在 UI 中连续下两个不同价格的买单/卖单，观察排序是否符合预期即可。
+### 5.2 前端验证
 
-> [!TIP]
-> 仓库提供的 `OrderForm.tsx` 已包含对 `NaN` 与零值的拦截逻辑。这是 Web3 前端开发的关键：在调用合约之前拦截非法输入，避免产生无意义的 Gas 消耗或尴尬的 JavaScript 报错。
+**启动环境**：
+
+```bash
+# 终端 1：启动本地链并部署
+./scripts/run-anvil-deploy.sh
+
+# 终端 2：启动前端
+cd frontend && pnpm dev
+```
+
+**验证步骤**：
+
+1. 打开 http://localhost:3000
+2. 在 Deposit 区域充值 100 ETH（系统内视为 100 USD）
+3. 下单测试：
+   - 下一个买单：价格 1500，数量 0.1（需保证金 = 1500 × 0.1 / 20 = 7.5 USD）
+   - 再下一个买单：价格 1600，数量 0.1（需保证金 = 1600 × 0.1 / 20 = 8 USD）
+   - 观察订单簿：1600 的买单应该排在 1500 上面（价格高的在上）
+4. 撤单测试：
+   - 点击订单旁的取消按钮
+   - 订单应该从列表中消失
+
+> **保证金计算**：初始保证金 = 价格 × 数量 / 杠杆倍数（默认 20 倍）
+
+**预期结果**：
+- 订单簿显示正确的价格排序（买单价格高在上，卖单价格低在上）
+- 撤单后订单从列表移除
 
 ---
 
@@ -525,19 +550,82 @@ Exchange.OrderRemoved.handler(async ({ event, context }) => {
 
 ### Step 4: 验证 Indexer
 
-运行 `pnpm codegen` 后启动 Indexer，验证查询：
+**启动步骤**：
+
+```bash
+# 1. 重置旧数据（如有）
+cd indexer/generated && docker compose down -v && cd ..
+
+# 2. 生成类型
+pnpm codegen
+
+# 3. 启动 Indexer
+pnpm dev
+```
+
+**触发事件**：
+
+1. 确保本地链和前端已启动（见 5.2 节）
+2. 在前端下单：买单 价格 1600，数量 0.1
+3. 在前端下单：卖单 价格 1400，数量 0.1
+
+**验证方式 1：Hasura Console（UI）**
+
+打开 http://localhost:8080/console，在 GraphiQL 中执行：
 
 ```graphql
 query {
-  Order(where: { status: "OPEN" }, orderBy: price, orderDirection: desc) {
+  Order(order_by: {timestamp: desc}) {
     id
     trader
     isBuy
     price
     amount
+    status
   }
 }
 ```
+
+**验证方式 2：curl（命令行）**
+
+```bash
+curl -X POST http://localhost:8080/v1/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ Order(order_by: {timestamp: desc}) { id trader isBuy price amount status } }"}'
+```
+
+**预期结果**：
+
+```json
+{
+  "data": {
+    "Order": [
+      {
+        "id": "2",
+        "trader": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "isBuy": false,
+        "price": "1400000000000000000000",
+        "amount": "100000000000000000",
+        "status": "OPEN"
+      },
+      {
+        "id": "1",
+        "trader": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        "isBuy": true,
+        "price": "1600000000000000000000",
+        "amount": "100000000000000000",
+        "status": "OPEN"
+      }
+    ]
+  }
+}
+```
+
+> 注意：`price` 和 `amount` 是 18 位精度的 BigInt。
+
+**撤单后验证**：
+
+在前端撤销订单 1，再次查询，预期 `status` 变为 `"CANCELLED"`。
 
 ---
 
@@ -580,7 +668,95 @@ placeOrder = async (params: { side: OrderSide; orderType?: OrderType; price?: st
 }
 ```
 
-### Step 2: 从 Indexer 获取订单簿
+### Step 2: 从 Indexer 获取我的订单
+
+修改 `frontend/store/exchangeStore.tsx`，添加 `loadMyOrders` 函数：
+
+```typescript
+// Day 2: 从 Indexer 获取用户的 OPEN 订单
+loadMyOrders = async (trader: Address): Promise<OpenOrder[]> => {
+  try {
+    const response = await fetch('http://localhost:8080/v1/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `
+          query GetMyOrders($trader: String!) {
+            Order(where: { trader: { _ilike: $trader }, status: { _eq: "OPEN" } }, order_by: { timestamp: desc }) {
+              id
+              isBuy
+              price
+              amount
+              initialAmount
+              timestamp
+            }
+          }
+        `,
+        variables: { trader },
+      }),
+    });
+    const json = await response.json();
+    const orders = json.data?.Order || [];
+    return orders.map((o: any) => ({
+      id: BigInt(o.id),
+      isBuy: o.isBuy,
+      price: BigInt(o.price),
+      amount: BigInt(o.amount),
+      initialAmount: BigInt(o.initialAmount),
+      timestamp: BigInt(o.timestamp),
+      trader: trader,
+    }));
+  } catch (e) {
+    console.error('[loadMyOrders] error', e);
+    return [];
+  }
+};
+```
+
+然后在 `refresh` 函数中调用：
+
+```typescript
+// Day 2: 从 Indexer 获取我的订单
+if (this.account) {
+  const orders = await this.loadMyOrders(this.account);
+  runInAction(() => {
+    this.myOrders = orders;
+  });
+}
+```
+
+### Step 3: 实现 cancelOrder 函数
+
+修改 `frontend/store/exchangeStore.tsx`，实现 `cancelOrder` 函数：
+
+```typescript
+cancelOrder = async (orderId: bigint) => {
+  if (!this.walletClient || !this.account) throw new Error('Connect wallet before cancelling orders');
+  runInAction(() => { this.cancellingOrderId = orderId; });
+  try {
+    const hash = await this.walletClient.writeContract({
+      account: this.account,
+      address: this.ensureContract(),
+      abi: EXCHANGE_ABI,
+      functionName: 'cancelOrder',
+      args: [orderId],
+      chain: undefined,
+    } as any);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new Error('Transaction failed');
+    await this.refresh();
+  } finally {
+    runInAction(() => { this.cancellingOrderId = undefined; });
+  }
+}
+```
+
+> 注意：`cancellingOrderId` 用于在 UI 中显示取消中的状态，需要在 store 中添加这个属性：
+> ```typescript
+> cancellingOrderId?: bigint; // 正在取消的订单 ID
+> ```
+
+### Step 4: 从 Indexer 获取订单簿
 
 通过 GraphQL 查询获取订单簿数据，比链上遍历效率高 10-100 倍：
 

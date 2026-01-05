@@ -6,7 +6,7 @@ import { OrderSide } from '../types';
 
 export const Positions: React.FC = observer(() => {
   const [activeTab, setActiveTab] = useState('positions');
-  const { account, position, margin, markPrice, trades, myOrders, syncing, refresh, cancelOrder } = useExchangeStore();
+  const { account, position, margin, markPrice, trades, myOrders, syncing, refresh, cancelOrder, cancellingOrderId } = useExchangeStore();
   const store = useExchangeStore();
 
   const displayPosition = useMemo(() => {
@@ -199,9 +199,14 @@ export const Positions: React.FC = observer(() => {
                   <td className="py-3 text-right pr-2">
                     <button
                       onClick={() => store.cancelOrder(o.id)}
-                      className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                      disabled={cancellingOrderId !== undefined}
+                      className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                        cancellingOrderId !== undefined
+                          ? 'bg-gray-500/10 text-gray-400 cursor-wait'
+                          : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                      }`}
                     >
-                      Cancel
+                      {cancellingOrderId === o.id ? 'Cancelling...' : 'Cancel'}
                     </button>
                   </td>
                 </tr>

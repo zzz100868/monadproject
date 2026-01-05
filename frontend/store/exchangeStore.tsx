@@ -48,6 +48,7 @@ class ExchangeStore {
   candles: CandleData[] = [];
   myOrders: OpenOrder[] = [];
   syncing = false;
+  cancellingOrderId?: bigint; // Day 2: 正在取消的订单 ID
   error?: string;
   walletClient = getWalletClient();
 
@@ -204,6 +205,20 @@ class ExchangeStore {
     return [];
   };
 
+  // ============================================
+  // Day 2 TODO: 从 Indexer 获取用户订单
+  // ============================================
+  loadMyOrders = async (trader: Address): Promise<OpenOrder[]> => {
+    // TODO: Day 2 - 实现从 Indexer 获取用户 OPEN 状态的订单
+    // 步骤:
+    // 1. 使用 fetch 向 http://localhost:8080/v1/graphql 发送 POST 请求
+    // 2. GraphQL 查询: Order(where: { trader: { _ilike: $trader }, status: { _eq: "OPEN" } })
+    // 3. 将返回的数据转换为 OpenOrder[] 格式
+    // 4. 注意将 string 类型转换为 bigint
+
+    return []; // TODO: 移除这行，实现上面的逻辑
+  };
+
   refresh = async () => {
     try {
       runInAction(() => {
@@ -322,12 +337,14 @@ class ExchangeStore {
       // Load Candles (Day 5)
       // this.loadCandles();
 
-      // My Orders from Indexer (Day 5)
-      /*
-      if (this.account) {
-         // ... fetch from indexer
-      }
-      */
+      // ============================================
+      // Day 2 TODO: 从 Indexer 获取我的订单
+      // ============================================
+      // TODO: Day 2 - 调用 loadMyOrders 获取用户订单
+      // if (this.account) {
+      //   const orders = await this.loadMyOrders(this.account);
+      //   runInAction(() => { this.myOrders = orders; });
+      // }
       runInAction(() => {
         this.myOrders = [];
       });
@@ -385,19 +402,20 @@ class ExchangeStore {
     throw new Error('placeOrder 功能尚未实现，请完成 Day2 练习');
   }
 
+  // ============================================
+  // Day 2 TODO: 实现取消订单函数
+  // ============================================
   cancelOrder = async (orderId: bigint) => {
-    if (!this.walletClient || !this.account) throw new Error('Connect wallet before cancelling orders');
-    const hash = await this.walletClient.writeContract({
-      account: this.account,
-      address: this.ensureContract(),
-      abi: EXCHANGE_ABI,
-      functionName: 'cancelOrder',
-      args: [orderId],
-      chain: undefined,
-    } as any);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status !== 'success') throw new Error('Transaction failed');
-    await this.refresh();
+    // TODO: Day 2 - 实现取消订单功能
+    // 步骤:
+    // 1. 检查钱包连接
+    // 2. 设置 cancellingOrderId 状态（用于 UI 显示 loading）
+    // 3. 调用合约 cancelOrder(orderId)
+    // 4. 等待交易确认
+    // 5. 刷新数据
+    // 6. 清除 cancellingOrderId 状态（在 finally 中）
+
+    throw new Error('cancelOrder 功能尚未实现，请完成 Day2 练习');
   }
 }
 
