@@ -185,8 +185,7 @@ const m = await publicClient.readContract({
   address,
   functionName: 'margin',
   args: [this.account],
-  authorizationList: []
-}) as bigint;
+} as any) as bigint;
 ```
 
 ---
@@ -478,8 +477,21 @@ pnpm dev
 
 3. **验证 GraphQL 查询**：
 
-   打开 http://localhost:8080/v1/graphql，执行：
+   **方法 A：使用 Hasura Console（推荐）**
 
+   1. 打开 http://localhost:8080/console
+   2. 输入 Admin Secret：`testing`
+   3. 在 GraphiQL 标签页执行查询
+
+   **方法 B：使用 curl 命令**
+
+   ```bash
+   curl -s -X POST http://localhost:8080/v1/graphql \
+     -H "Content-Type: application/json" \
+     -d '{"query":"{ MarginEvent { id trader amount eventType timestamp txHash } }"}' | jq .
+   ```
+
+   **查询语句**（在 Hasura Console 中使用）：
    ```graphql
    query {
      MarginEvent(limit: 10, order_by: {timestamp: desc}) {
