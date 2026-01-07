@@ -72,7 +72,7 @@ function canLiquidate(address trader) public view virtual returns (bool) {
     
     int256 unrealized = _unrealizedPnl(p);
     
-    int256 marginBalance = int256(accounts[trader].margin) + p.realizedPnl + unrealized;
+    int256 marginBalance = int256(accounts[trader].margin) + unrealized;
     
     uint256 priceBase = markPrice == 0 ? p.entryPrice : markPrice;
     uint256 positionValue = SignedMath.abs(int256(priceBase) * p.size) / 1e18;
@@ -163,12 +163,10 @@ function liquidate(address trader, uint256 amount) external virtual nonReentrant
         accounts[trader].margin -= fee;
         accounts[msg.sender].margin += fee;
     } else {
+        // 坏账情况：被清算者保证金不足，清算者只能获得剩余部分
         uint256 available = accounts[trader].margin;
         accounts[trader].margin = 0;
         accounts[msg.sender].margin += available;
-        
-        uint256 debt = fee - available;
-        p.realizedPnl -= int256(debt);
     }
     
     emit Liquidated(trader, msg.sender, liqAmount, fee);
@@ -276,7 +274,7 @@ p.realizedPnl -= int256(debt);
 
 ```bash
 cd contract
-forge test --match-contract Day7 -vvv
+forge test --match-contract Day7LiquidationTest -vvv
 ```
 
 通过标准：5 个测试全部 `PASS`
@@ -377,53 +375,69 @@ Exchange.Liquidated.handler(async ({ event, context }) => {
 
 ---
 
-## 9) 前端：危险预警与健康度显示
+## 9) 前端：健康度显示
 
-### 9.1 保证金率（健康度）计算
+在持仓表格中添加 Health 列，直观显示账户健康状态。
 
-在 `frontend/components/Positions.tsx` 中添加：
+修改：
 
-```typescript
-// 计算保证金率
-const marginRatio = useMemo(() => {
-    if (!position || position.size === 0n) return null;
-    
-    const marginBalance = margin + unrealizedPnl;
-    const positionValue = Math.abs(Number(formatEther(position.size))) * markPrice;
-    
-    return (marginBalance / positionValue) * 100;  // 百分比
-}, [position, margin, unrealizedPnl, markPrice]);
-```
+- `frontend/components/Positions.tsx`
 
-### 9.2 危险预警 Toast
+### 9.1 在 displayPosition 中添加健康度计算
+
+找到 `displayPosition` 的 `useMemo`，在返回对象中添加 `marginRatio`：
 
 ```typescript
-useEffect(() => {
-    // 维持保证金率 = 0.5% + 1.25% = 1.75%
-    const DANGER_THRESHOLD = 3;  // 3% 时开始警告
-    const CRITICAL_THRESHOLD = 2; // 2% 时严重警告
-    
-    if (marginRatio !== null && marginRatio < DANGER_THRESHOLD) {
-        if (marginRatio < CRITICAL_THRESHOLD) {
-            toast.error("⚠️ 即将被清算！请立即补充保证金", { duration: 10000 });
-        } else {
-            toast.warning("⚠️ 保证金不足，请及时补充", { duration: 5000 });
-        }
-    }
-}, [marginRatio]);
+// 在 displayPosition 计算中添加保证金率
+const marginRatio = (() => {
+    const marginBalance = freeMargin + pnl;  // margin + unrealizedPnl
+    const positionValue = mark * absSize;
+    if (positionValue === 0) return 100;
+    return (marginBalance / positionValue) * 100;
+})();
+
+return {
+    symbol: 'ETH',
+    // ... 其他字段
+    marginRatio,  // 添加这行
+};
 ```
 
-### 9.3 健康度可视化
+### 9.2 在表头添加 Health 列
 
 ```tsx
-<div className="health-bar">
-    <div 
-        className={`fill ${marginRatio < 2 ? 'critical' : marginRatio < 5 ? 'warning' : 'healthy'}`}
-        style={{ width: `${Math.min(marginRatio || 0, 100)}%` }}
-    />
-    <span>{marginRatio?.toFixed(2)}%</span>
-</div>
+<tr className="text-[10px] text-gray-500 uppercase tracking-wider">
+    <th className="pb-3 pl-2">Symbol</th>
+    <th className="pb-3 text-right">Size</th>
+    <th className="pb-3 text-right">Entry Price</th>
+    <th className="pb-3 text-right">Mark Price</th>
+    <th className="pb-3 text-right">Liq. Price</th>
+    <th className="pb-3 text-right">Health</th>  {/* 添加 */}
+    <th className="pb-3 text-right">PnL (ROE%)</th>
+</tr>
 ```
+
+### 9.3 在数据行显示健康度
+
+在 Liq. Price 和 PnL 之间添加 Health 列：
+
+```tsx
+{/* Health 列 - 添加在 Liq. Price 之后 */}
+<td className="py-3 text-right font-mono">
+    <span className={
+        displayPosition.marginRatio < 2 ? 'text-red-500' :
+        displayPosition.marginRatio < 5 ? 'text-yellow-500' :
+        'text-green-500'
+    }>
+        {displayPosition.marginRatio.toFixed(1)}%
+    </span>
+</td>
+```
+
+颜色含义：
+- 🟢 绿色 (>5%): 安全
+- 🟡 黄色 (2-5%): 警告
+- 🔴 红色 (<2%): 危险（清算线 1.75%）
 
 ---
 
