@@ -51,7 +51,7 @@ sleep 5
 cd "$ROOT_DIR/indexer"
 echo "Generating indexer code..."
 pnpm codegen
-TUI_OFF=true HASURA_CONSOLE_ENABLED=false BROWSER=none pnpm start > "$ROOT_DIR/output/logs/indexer.log" 2>&1 &
+TUI_OFF=true HASURA_CONSOLE_ENABLED=false BROWSER=none pnpm dev > "$ROOT_DIR/output/logs/indexer.log" 2>&1 &
 INDEXER_PID=$!
 echo "$INDEXER_PID" > "$PROCESS_DIR/indexer.pid"
 cd "$ROOT_DIR"

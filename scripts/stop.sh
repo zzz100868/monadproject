@@ -8,17 +8,25 @@ echo "=================================================="
 echo "   Monad Exchange: Stop Services"
 echo "=================================================="
 
+# Stop Envio indexer gracefully first
+if [ -d "$ROOT_DIR/indexer" ]; then
+    echo "Stopping Envio indexer..."
+    cd "$ROOT_DIR/indexer"
+    pnpm stop 2>/dev/null || true
+    cd "$ROOT_DIR"
+fi
+
 if [ -d "$PROCESS_DIR" ]; then
     for pid_file in "$PROCESS_DIR"/*.pid; do
         if [ -f "$pid_file" ]; then
             PID=$(cat "$pid_file")
             NAME=$(basename "$pid_file" .pid)
-            
+
             if ps -p "$PID" > /dev/null 2>&1; then
                 echo "Stopping $NAME (PID: $PID)..."
                 # Use SIGTERM to allow traps (like in run-anvil-deploy.sh) to run
                 kill "$PID" || true
-                
+
                 # Wait a bit for it to exit
                 for i in {1..5}; do
                     if ! ps -p "$PID" > /dev/null 2>&1; then
@@ -26,7 +34,7 @@ if [ -d "$PROCESS_DIR" ]; then
                     fi
                     sleep 0.5
                 done
-                
+
                 # Force kill if still running
                 if ps -p "$PID" > /dev/null 2>&1; then
                     echo "Force killing $NAME..."
