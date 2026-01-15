@@ -246,11 +246,6 @@
             "name": "entryPrice",
             "type": "uint256",
             "internalType": "uint256"
-          },
-          {
-            "name": "realizedPnl",
-            "type": "int256",
-            "internalType": "int256"
           }
         ]
       }
@@ -600,42 +595,6 @@
   },
   {
     "type": "function",
-    "name": "positions",
-    "inputs": [
-      {
-        "name": "trader",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct ExchangeStorage.Position",
-        "components": [
-          {
-            "name": "size",
-            "type": "int256",
-            "internalType": "int256"
-          },
-          {
-            "name": "entryPrice",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "realizedPnl",
-            "type": "int256",
-            "internalType": "int256"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "renounceRole",
     "inputs": [
       {
@@ -840,13 +799,13 @@
         "internalType": "address"
       },
       {
-        "name": "reward",
+        "name": "amount",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "sentToFund",
+        "name": "reward",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -969,6 +928,31 @@
         "name": "id",
         "type": "uint256",
         "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PositionUpdated",
+    "inputs": [
+      {
+        "name": "trader",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "size",
+        "type": "int256",
+        "indexed": false,
+        "internalType": "int256"
+      },
+      {
+        "name": "entryPrice",
+        "type": "uint256",
+        "indexed": false,
         "internalType": "uint256"
       }
     ],

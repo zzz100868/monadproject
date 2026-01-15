@@ -15,13 +15,13 @@ importers:
         specifier: ^16.12.0
         version: 16.12.0
       lightweight-charts:
-        specifier: ^5.0.9
+        specifier: ^5.1.0
         version: 5.1.0
       mobx:
-        specifier: ^6.12.0
+        specifier: ^6.15.0
         version: 6.15.0
       mobx-react-lite:
-        specifier: ^4.0.5
+        specifier: ^4.1.1
         version: 4.1.1(mobx@6.15.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       react:
         specifier: ^19.2.0
@@ -40,16 +40,16 @@ importers:
         version: 2.43.5(typescript@5.8.3)
     devDependencies:
       '@types/node':
-        specifier: ^22.14.0
+        specifier: ^22.19.1
         version: 22.19.1
       '@vitejs/plugin-react':
-        specifier: ^5.0.0
+        specifier: ^5.1.1
         version: 5.1.1(vite@6.4.1(@types/node@22.19.1))
       typescript:
-        specifier: ~5.8.2
+        specifier: ~5.8.3
         version: 5.8.3
       vite:
-        specifier: ^6.2.0
+        specifier: ^6.4.1
         version: 6.4.1(@types/node@22.19.1)
 
 packages:

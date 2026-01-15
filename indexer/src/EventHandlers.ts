@@ -5,125 +5,185 @@ import {
     Order,
     Position,
     MarginEvent,
+    LatestCandle,
 } from "../generated";
 
-/**
- * Event Handlers - 脚手架版本
- * 
- * 这个文件定义了如何处理合约事件并存储到数据库。
- * 
- * TODO: 学生需要实现以下事件处理器：
- * 1. MarginDeposited - 记录充值事件
- * 2. MarginWithdrawn - 记录提现事件
- * 3. OrderPlaced - 记录新订单
- * 4. OrderRemoved - 更新订单状态 (取消/成交)
- * 5. TradeExecuted - 记录成交，更新订单、K线、持仓
- */
+const toLower = (addr: string) => addr.toLowerCase();
+const toBigInt = (v: bigint | number) => (typeof v === "bigint" ? v : BigInt(v));
+const toUnixSeconds = (v: bigint | number) => Number(toBigInt(v));
+const abs = (v: bigint) => (v < 0n ? -v : v);
 
-/**
- * 处理保证金充值事件
- * 
- * TODO: 实现此处理器
- * 步骤:
- * 1. 从 event.params 获取 trader 和 amount
- * 2. 创建 MarginEvent 实体
- * 3. 使用 context.MarginEvent.set 保存
- */
 Exchange.MarginDeposited.handler(async ({ event, context }) => {
-    console.log('TODO: Implement MarginDeposited handler');
-    // const entity: MarginEvent = {
-    //     id: `${event.transaction.hash}-${event.logIndex}`,
-    //     trader: event.params.trader,
-    //     amount: event.params.amount,
-    //     eventType: "DEPOSIT",
-    //     timestamp: event.block.timestamp,
-    // };
-    // context.MarginEvent.set(entity);
+    const entity: MarginEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader: toLower(event.params.trader),
+        amount: event.params.amount,
+        eventType: "DEPOSIT",
+        timestamp: toUnixSeconds(event.block.timestamp),
+        txHash: event.transaction.hash,
+    };
+    context.MarginEvent.set(entity);
 });
 
-/**
- * 处理保证金提现事件
- */
 Exchange.MarginWithdrawn.handler(async ({ event, context }) => {
-    console.log('TODO: Implement MarginWithdrawn handler');
+    const entity: MarginEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader: toLower(event.params.trader),
+        amount: event.params.amount,
+        eventType: "WITHDRAW",
+        timestamp: toUnixSeconds(event.block.timestamp),
+        txHash: event.transaction.hash,
+    };
+    context.MarginEvent.set(entity);
 });
 
-/**
- * 处理订单创建事件
- * 
- * TODO: 实现此处理器
- * 步骤:
- * 1. 从 event.params 获取订单信息
- * 2. 创建 Order 实体，status 设为 "OPEN"
- * 3. 使用 context.Order.set 保存
- */
-Exchange.OrderPlaced.handler(async ({ event, context }) => {
-    console.log('TODO: Implement OrderPlaced handler');
-});
 
-/**
- * 处理订单移除事件
- * 
- * TODO: 实现此处理器
- * 步骤:
- * 1. 获取现有订单 context.Order.get
- * 2. 根据剩余数量判断是 CANCELLED 还是 FILLED
- * 3. 更新订单状态
- */
-Exchange.OrderRemoved.handler(async ({ event, context }) => {
-    console.log('TODO: Implement OrderRemoved handler');
-});
 
-/**
- * 处理成交事件
- * 
- * TODO: 实现此处理器
- * 这是最复杂的处理器，需要：
- * 1. 创建 Trade 记录
- * 2. 更新买卖双方的 Order 剩余数量
- * 3. 更新 K 线数据 (Candle)
- * 4. 更新买卖双方的 Position
- */
+
+
 Exchange.TradeExecuted.handler(async ({ event, context }) => {
-    console.log('TODO: Implement TradeExecuted handler');
+    const timestamp = toUnixSeconds(event.block.timestamp);
+    const tradeAmount = event.params.amount;
 
-    // 步骤 1: 创建 Trade 记录
-    // const trade: Trade = { ... };
-    // context.Trade.set(trade);
+    const trade: Trade = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        price: event.params.price,
+        amount: tradeAmount,
+        buyer: toLower(event.params.buyer),
+        seller: toLower(event.params.seller),
+        buyOrderId: event.params.buyOrderId.toString(),
+        sellOrderId: event.params.sellOrderId.toString(),
+        timestamp,
+        txHash: event.transaction.hash,
+    };
+    context.Trade.set(trade);
 
-    // 步骤 2: 更新订单
-    // const buyOrder = await context.Order.get(event.params.buyOrderId.toString());
-    // ...
+    const buyOrder = await context.Order.get(trade.buyOrderId);
+    if (buyOrder) {
+        const remaining = buyOrder.amount - tradeAmount;
+        context.Order.set({
+            ...buyOrder,
+            amount: remaining > 0n ? remaining : 0n,
+            status: remaining > 0n ? "PARTIAL" : "FILLED",
+            timestamp,
+        });
+    }
 
-    // 步骤 3: 更新 K 线
-    // ...
+    const sellOrder = await context.Order.get(trade.sellOrderId);
+    if (sellOrder) {
+        const remaining = sellOrder.amount - tradeAmount;
+        context.Order.set({
+            ...sellOrder,
+            amount: remaining > 0n ? remaining : 0n,
+            status: remaining > 0n ? "PARTIAL" : "FILLED",
+            timestamp,
+        });
+    }
 
-    // 步骤 4: 更新持仓
-    // await updatePosition(context, event.params.buyer, true, amount, price);
-    // await updatePosition(context, event.params.seller, false, amount, price);
+    // 1m candle aggregation
+    const blockTs = toBigInt(event.block.timestamp);
+    const minuteTs = blockTs - (blockTs % 60n);
+    const candleId = `1m-${minuteTs}`;
+    const existingCandle = await context.Candle.get(candleId);
+
+    if (!existingCandle) {
+        const latest: LatestCandle | undefined = await context.LatestCandle.get("1");
+        const openPrice = latest ? latest.closePrice : event.params.price;
+
+        const candle: Candle = {
+            id: candleId,
+            resolution: "1m",
+            timestamp: Number(minuteTs),
+            openPrice,
+            highPrice: event.params.price > openPrice ? event.params.price : openPrice,
+            lowPrice: event.params.price < openPrice ? event.params.price : openPrice,
+            closePrice: event.params.price,
+            volume: tradeAmount,
+        };
+        context.Candle.set(candle);
+    } else {
+        const newHigh = event.params.price > existingCandle.highPrice ? event.params.price : existingCandle.highPrice;
+        const newLow = event.params.price < existingCandle.lowPrice ? event.params.price : existingCandle.lowPrice;
+
+        context.Candle.set({
+            ...existingCandle,
+            highPrice: newHigh,
+            lowPrice: newLow,
+            closePrice: event.params.price,
+            volume: existingCandle.volume + tradeAmount,
+        });
+    }
+
+    context.LatestCandle.set({
+        id: "1",
+        closePrice: event.params.price,
+        timestamp,
+    });
+
+    await updatePosition(context, trade.buyer, true, tradeAmount, event.params.price, timestamp);
+    await updatePosition(context, trade.seller, false, tradeAmount, event.params.price, timestamp);
 });
 
-/**
- * 更新用户持仓
- * 
- * TODO: 实现此辅助函数
- * 
- * @param context - Envio context
- * @param trader - 交易者地址
- * @param isBuy - 是否为买入
- * @param amount - 成交数量
- * @param price - 成交价格
- */
 async function updatePosition(
     context: any,
     trader: string,
     isBuy: boolean,
     amount: bigint,
-    price: bigint
+    price: bigint,
+    timestamp: number,
 ) {
-    // TODO: 实现持仓更新逻辑
-    // 1. 获取现有持仓 context.Position.get(trader)
-    // 2. 如果是加仓，计算加权平均入场价
-    // 3. 如果是减仓，计算已实现盈亏
-    // 4. 更新持仓 context.Position.set
+    const existing: Position | undefined = await context.Position.get(trader);
+    const prevSize = existing?.size ?? 0n;
+    const prevEntry = existing?.entryPrice ?? 0n;
+
+    const delta = isBuy ? amount : -amount;
+    const newSize = prevSize + delta;
+
+    let newEntry = prevEntry;
+    const increasing = prevSize === 0n || (prevSize > 0n && delta > 0n) || (prevSize < 0n && delta < 0n);
+
+    if (increasing) {
+        const totalAbs = abs(prevSize) + amount;
+        const weightedCost = abs(prevSize) * prevEntry + amount * price;
+        newEntry = totalAbs > 0n ? weightedCost / totalAbs : price;
+    } else if (newSize === 0n) {
+        newEntry = 0n;
+    } else if ((prevSize > 0n && newSize < 0n) || (prevSize < 0n && newSize > 0n)) {
+        newEntry = price;
+    } else {
+        newEntry = prevEntry;
+    }
+
+    const position: Position = {
+        id: trader,
+        trader,
+        size: newSize,
+        entryPrice: newEntry,
+        timestamp,
+    };
+    context.Position.set(position);
 }
+Exchange.OrderPlaced.handler(async ({ event, context }) => {
+    const order: Order = {
+        id: event.params.id.toString(),
+        trader: event.params.trader,
+        isBuy: event.params.isBuy,
+        price: event.params.price,
+        initialAmount: event.params.amount,
+        amount: event.params.amount,
+        status: "OPEN",
+        timestamp: event.block.timestamp,
+    };
+    context.Order.set(order);
+});
+
+Exchange.OrderRemoved.handler(async ({ event, context }) => {
+    const order = await context.Order.get(event.params.id.toString());
+    if (order) {
+        context.Order.set({
+            ...order,
+            status: order.amount === 0n ? "FILLED" : "CANCELLED",
+            amount: 0n, // 清零以便 GET_OPEN_ORDERS 过滤
+        });
+    }
+});

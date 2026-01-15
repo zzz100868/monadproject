@@ -11,18 +11,17 @@ abstract contract ViewModule is ExchangeStorage {
     /// @param id 订单 ID
     /// @return 订单结构体
     function getOrder(uint256 id) external view virtual returns (Order memory) {
-        // TODO: 请实现此函数
-        // 提示: 从 orders mapping 中读取订单
-        revert("Not implemented");
+       return orders[id];
+        //revert("Not implemented");
     }
 
     /// @notice 获取用户账户保证金
     /// @param trader 用户地址
     /// @return 账户保证金数量
     function margin(address trader) external view virtual returns (uint256) {
-        // TODO: 请实现此函数
-        // 提示: 从 accounts[trader].margin 读取
-        revert("Not implemented");
+        
+        return accounts[trader].margin;
+        //revert("Not implemented");
     }
 
     /// @notice 获取用户持仓
@@ -30,6 +29,7 @@ abstract contract ViewModule is ExchangeStorage {
     /// @return 持仓结构体
     function getPosition(address trader) external view virtual returns (Position memory) {
         // TODO: 请实现此函数
-        revert("Not implemented");
+        //revert("Not implemented");
     }
 }
+

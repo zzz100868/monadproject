@@ -1,9 +1,56 @@
-# Envio Indexer Schema
-# Day 5: TODO - 定义你的数据模型
+type MarginEvent @entity {
+  id: ID!
+  trader: String!
+  amount: BigInt!
+  eventType: String!
+  timestamp: Int!
+  txHash: String!
+}
 
-# 提示: 你可能需要定义以下实体:
-# 1. Trade (成交记录)
-# 2. Candle (K 线数据)
-# 3. Order (订单状态)
-# 4. Position (持仓信息)
-# 5. MarginEvent (保证金变动)
+type Order @entity {
+  id: ID!
+  trader: String!
+  isBuy: Boolean!
+  price: BigInt!
+  amount: BigInt!
+  initialAmount: BigInt!
+  timestamp: Int!
+  status: String!
+}
+
+type Trade @entity {
+  id: ID!
+  price: BigInt!
+  amount: BigInt!
+  buyer: String!
+  seller: String!
+  buyOrderId: String!
+  sellOrderId: String!
+  timestamp: Int!
+  txHash: String!
+}
+
+type Candle @entity {
+  id: ID!
+  resolution: String!
+  timestamp: Int!
+  openPrice: BigInt!
+  highPrice: BigInt!
+  lowPrice: BigInt!
+  closePrice: BigInt!
+  volume: BigInt!
+}
+
+type LatestCandle @entity {
+  id: ID!
+  closePrice: BigInt!
+  timestamp: Int!
+}
+
+type Position @entity {
+  id: ID!
+  trader: String!
+  size: BigInt!
+  entryPrice: BigInt!
+  timestamp: Int!
+}

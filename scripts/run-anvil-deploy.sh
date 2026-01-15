@@ -121,7 +121,7 @@ EOF
       # Use sed to replace the address (assuming standard formatting)
       # We look for the line with the address and replace it
       # Note: This is a simple replacement, assuming the file structure doesn't change drastically
-      sed -i '' "s/0x[a-fA-F0-9]\{40\}/$EXCHANGE_ADDR/" "$INDEXER_CONFIG"
+      sed -i "s/0x[a-fA-F0-9]\{40\}/$EXCHANGE_ADDR/" "$INDEXER_CONFIG"
       echo "已更新 indexer/config.yaml (exchange=$EXCHANGE_ADDR)"
     else
       echo "未找到 indexer/config.yaml，跳过更新"

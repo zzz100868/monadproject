@@ -5,8 +5,7 @@ import { EXCHANGE_ABI } from '../onchain/abi';
 import { EXCHANGE_ADDRESS, EXCHANGE_DEPLOY_BLOCK } from '../onchain/config';
 import { chain, getWalletClient, publicClient, fallbackAccount, ACCOUNTS } from '../onchain/client';
 import { OrderBookItem, OrderSide, OrderType, PositionSnapshot, Trade, CandleData } from '../types';
-// Day 2 TODO: 取消注释以启用 IndexerClient
-// import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS, GET_MY_TRADES } from './IndexerClient';
+import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';
 
 type OrderStruct = {
   id: bigint;
@@ -50,7 +49,7 @@ class ExchangeStore {
   myOrders: OpenOrder[] = [];
   myTrades: Trade[] = [];
   syncing = false;
-  cancellingOrderId?: bigint; // Day 2: 正在取消的订单 ID
+  cancellingOrderId?: bigint // Day 2: 正在取消的订单 ID
   error?: string;
   walletClient = getWalletClient();
 
@@ -226,17 +225,26 @@ class ExchangeStore {
   };
 
   // ============================================
-  // Day 2 TODO: 从 Indexer 获取用户订单
+  // Day 2: 从 Indexer 获取用户订单（健壮实现）
   // ============================================
   loadMyOrders = async (trader: Address): Promise<OpenOrder[]> => {
-    // TODO: Day 2 - 实现从 Indexer 获取用户 OPEN 状态的订单
-    // 步骤:
-    // 1. 使用 client.query(GET_OPEN_ORDERS, { trader }).toPromise() 查询
-    // 2. 从 result.data?.Order 获取订单数组
-    // 3. 将返回的数据转换为 OpenOrder[] 格式
-    // 4. 注意将 string 类型转换为 bigint (使用 BigInt())
-
-    return []; // TODO: 移除这行，实现上面的逻辑
+    // indexer 存储的地址使用小写，需要规范化
+    const addr = (trader as string).toLowerCase();
+    const res = await client.query(GET_OPEN_ORDERS, { trader: addr }).toPromise();
+    if (res?.error) {
+      console.warn('[indexer] GET_OPEN_ORDERS error', res.error);
+      return [];
+    }
+    const orders = res.data?.Order || [];
+    return orders.map((o: any) => ({
+      id: BigInt(o.id),
+      isBuy: !!o.isBuy,
+      price: BigInt(o.price),
+      amount: BigInt(o.amount),
+      initialAmount: BigInt(o.initialAmount ?? o.amount),
+      timestamp: BigInt(o.timestamp ?? 0),
+      trader: addr as Address,
+    }));
   };
 
   // ============================================
@@ -283,25 +291,12 @@ class ExchangeStore {
       });
 
       if (this.account) {
-        // ============================================
-        // Day 1 TODO: 读取用户保证金余额
-        // ============================================
-        // TODO: Day 1 - 使用 publicClient.readContract 读取保证金余额
-        // 步骤:
-        // 1. 调用 publicClient.readContract 读取 margin 函数
-        // 2. 传入参数 args: [this.account]
-        // 3. 使用 runInAction 更新 this.margin
-
-        // 参考代码:
-        // const m = await publicClient.readContract({
-        //   abi: EXCHANGE_ABI,
-        //   address,
-        //   functionName: 'margin',
-        //   args: [this.account],
-        // } as any) as bigint;
-        // runInAction(() => { this.margin = m; });
-
-        const m = 0n; // TODO: 移除这行，实现上面的代码
+        const m = await publicClient.readContract({
+  abi: EXCHANGE_ABI,
+  address,
+  functionName: 'margin',
+  args: [this.account],
+} as any) as bigint;
 
         // Position fetching from Indexer to be implemented in Day 5
         let pos: PositionSnapshot = { size: 0n, entryPrice: 0n };
@@ -374,16 +369,25 @@ class ExchangeStore {
       // this.loadCandles();
 
       // ============================================
-      // Day 2 TODO: 从 Indexer 获取我的订单
+      // Day 2: 从 Indexer 获取我的订单（短轮询以等待 indexer 写入）
       // ============================================
-      // TODO: Day 2 - 调用 loadMyOrders 获取用户订单
-      // if (this.account) {
-      //   const orders = await this.loadMyOrders(this.account);
-      //   runInAction(() => { this.myOrders = orders; });
-      // }
-      runInAction(() => {
-        this.myOrders = [];
-      });
+      if (this.account) {
+        const traderAddr = (this.account as string).toLowerCase() as Address;
+        let orders: OpenOrder[] = [];
+        // 短轮询等待 indexer 写入（最多 5s）
+        for (let i = 0; i < 5; i++) {
+          orders = await this.loadMyOrders(traderAddr);
+          if (orders.length > 0) break;
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        runInAction(() => {
+          this.myOrders = orders;
+        });
+      } else {
+        runInAction(() => {
+          this.myOrders = [];
+        });
+      }
 
       // ============================================
       // Day 5 TODO: 从 Indexer 获取我的成交历史
@@ -407,64 +411,95 @@ class ExchangeStore {
   // Day 1 TODO: 实现充值函数
   // ============================================
   deposit = async (ethAmount: string) => {
-    // TODO: Day 1 - 实现充值功能
-    // 步骤:
-    // 1. 检查钱包是否连接: if (!this.walletClient || !this.account) throw new Error(...)
-    // 2. 调用合约的 deposit 函数，传入 value
-    // 3. 等待交易回执: await publicClient.waitForTransactionReceipt({ hash })
-    // 4. 检查交易状态: if (receipt.status !== 'success') throw new Error(...)
-    // 5. 刷新数据: await this.refresh()
-
-    // 提示: 参考下面的 withdraw 函数结构，但 deposit 需要 value 参数
-    throw new Error('deposit 功能尚未实现，请完成 Day1 练习');
-  };
+  if (!this.walletClient || !this.account) throw new Error('Connect wallet before depositing');
+  const hash = await this.walletClient.writeContract({
+    account: this.account,
+    chain: this.walletClient.chain,
+    address: this.ensureContract(),
+    abi: EXCHANGE_ABI,
+    functionName: 'deposit',
+    value: parseEther(ethAmount),
+  } as any);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error('Transaction failed');
+  await this.refresh();
+}
 
   // ============================================
   // Day 1 TODO: 实现提现函数
   // ============================================
   withdraw = async (amount: string) => {
-    // TODO: Day 1 - 实现提现功能
-    // 步骤:
-    // 1. 检查钱包是否连接: if (!this.walletClient || !this.account) throw new Error(...)
-    // 2. 解析金额: const parsed = parseEther(amount || '0')
-    // 3. 调用合约的 withdraw 函数，传入 args: [parsed]
-    // 4. 等待交易回执: await publicClient.waitForTransactionReceipt({ hash })
-    // 5. 检查交易状态: if (receipt.status !== 'success') throw new Error(...)
-    // 6. 刷新数据: await this.refresh()
-
-    throw new Error('withdraw 功能尚未实现，请完成 Day1 练习');
-  };
+  if (!this.walletClient || !this.account) throw new Error('Connect wallet before withdrawing');
+  const parsed = parseEther(amount || '0');
+  const hash = await this.walletClient.writeContract({
+    account: this.account,
+    chain: this.walletClient.chain,
+    address: this.ensureContract(),
+    abi: EXCHANGE_ABI,
+    functionName: 'withdraw',
+    args: [parsed],
+  });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error('Transaction failed');
+  await this.refresh();
+}
 
   // ============================================
   // Day 2 TODO: 实现下单函数
   // ============================================
   placeOrder = async (params: { side: OrderSide; orderType?: OrderType; price?: string; amount: string; hintId?: string }) => {
-    // TODO: Day 2 - 实现下单功能
-    // 步骤:
-    // 1. 检查钱包连接: if (!this.walletClient || !this.account) throw new Error(...)
-    // 2. 解析参数: const { side, orderType, price, amount, hintId } = params
-    // 3. 处理市价单价格（使用 markPrice 加滑点）
-    // 4. 调用合约 placeOrder(isBuy, price, amount, hintId)
-    // 5. 等待交易确认并刷新数据
+  const { side, orderType = OrderType.LIMIT, price, amount, hintId } = params;
+  if (!this.walletClient || !this.account) throw new Error('Connect wallet before placing orders');
 
-    throw new Error('placeOrder 功能尚未实现，请完成 Day2 练习');
-  }
+  // 处理市价单：使用 markPrice 加滑点
+  const currentPrice = this.markPrice > 0n ? this.markPrice : parseEther('1500');
+  const parsedPrice = price ? parseEther(price) : currentPrice;
+  const effectivePrice =
+    orderType === OrderType.MARKET
+      ? side === OrderSide.BUY
+        ? currentPrice + parseEther('100')  // 买单加滑点
+        : currentPrice - parseEther('100') > 0n ? currentPrice - parseEther('100') : 1n
+      : parsedPrice;
+
+  const parsedAmount = parseEther(amount);
+  const parsedHint = hintId ? BigInt(hintId) : 0n;
+
+  const hash = await this.walletClient.writeContract({
+    account: this.account,
+    address: this.ensureContract(),
+    abi: EXCHANGE_ABI,
+    functionName: 'placeOrder',
+    args: [side === OrderSide.BUY, effectivePrice, parsedAmount, parsedHint],
+    chain: undefined,
+  } as any);
+
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error('Transaction failed');
+  await this.refresh();
+}
 
   // ============================================
   // Day 2 TODO: 实现取消订单函数
   // ============================================
   cancelOrder = async (orderId: bigint) => {
-    // TODO: Day 2 - 实现取消订单功能
-    // 步骤:
-    // 1. 检查钱包连接
-    // 2. 设置 cancellingOrderId 状态（用于 UI 显示 loading）
-    // 3. 调用合约 cancelOrder(orderId)
-    // 4. 等待交易确认
-    // 5. 刷新数据
-    // 6. 清除 cancellingOrderId 状态（在 finally 中）
-
-    throw new Error('cancelOrder 功能尚未实现，请完成 Day2 练习');
+  if (!this.walletClient || !this.account) throw new Error('Connect wallet before cancelling orders');
+  runInAction(() => { this.cancellingOrderId = orderId; });
+  try {
+    const hash = await this.walletClient.writeContract({
+      account: this.account,
+      address: this.ensureContract(),
+      abi: EXCHANGE_ABI,
+      functionName: 'cancelOrder',
+      args: [orderId],
+      chain: undefined,
+    } as any);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new Error('Transaction failed');
+    await this.refresh();
+  } finally {
+    runInAction(() => { this.cancellingOrderId = undefined; });
   }
+}
 }
 
 const ExchangeStoreContext = createContext<ExchangeStore | null>(null);

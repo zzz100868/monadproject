@@ -1,0 +1,24 @@
+# Mainnet test config (do NOT commit your real API keys)
+# - Replace <YOUR_RPC_URL> with your RPC (e.g. https://eth-mainnet.g.alchemy.com/v2/<KEY>)
+# - Replace <START_BLOCK> with a block near when the target contract was active to limit indexing
+name: monad-exchange-indexer-mainnet-test
+description: Test config for listening to USDC Transfer events on mainnet
+field_selection:
+  transaction_fields:
+    - hash
+
+contracts:
+  - name: USDC
+    handler: src/MainnetHandlers.ts
+    events:
+      - event: Transfer(address indexed from, address indexed to, uint256 value)
+
+networks:
+  - id: 1
+    start_block: <START_BLOCK>  # e.g. current_block - 1000
+    rpc_config:
+      url: "<YOUR_RPC_URL>"
+    contracts:
+      - name: USDC
+        address:
+          - 0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48

@@ -2,9 +2,9 @@
     "name": "monad-exchange-indexer",
     "version": "0.1.0",
     "scripts": {
-        "codegen": "envio codegen",
-        "start": "envio start",
-        "dev": "envio dev",
+        "codegen": "envio codegen --config ./config.yaml",
+        "start": "envio start --config ./config.yaml",
+        "dev": "envio dev --config ./config.yaml",
         "stop": "envio stop"
     },
     "dependencies": {
