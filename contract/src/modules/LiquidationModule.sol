@@ -48,36 +48,75 @@ abstract contract LiquidationModule is PricingModule {
 
     /// @notice 执行交易
     /// @dev Day 3: 撮合成交核心函数
-    function _executeTrade(
-        address buyer,
-        address seller,
-        uint256 buyOrderId,
-        uint256 sellOrderId,
-        uint256 amount,
-        uint256 price
-    ) internal virtual {
-        // TODO: 请实现此函数
-        // 步骤:
-        // 1. 对买卖双方应用资金费 _applyFunding
-        // 2. 更新买方持仓 _updatePosition(buyer, true, amount, price)
-        // 3. 更新卖方持仓 _updatePosition(seller, false, amount, price)
-        // 4. 触发 TradeExecuted 事件
-    }
+   function _executeTrade(
+    address buyer,
+    address seller,
+    uint256 buyOrderId,
+    uint256 sellOrderId,
+    uint256 amount,
+    uint256 price
+) internal virtual {
+    _applyFunding(buyer);
+    _applyFunding(seller);
+
+    _updatePosition(buyer, true, amount, price);
+    _updatePosition(seller, false, amount, price);
+
+    emit TradeExecuted(buyOrderId, sellOrderId, price, amount, buyer, seller);
+}
 
     /// @notice 更新用户持仓
     /// @dev Day 3: 持仓更新核心函数
     function _updatePosition(
-        address trader,
-        bool isBuy,
-        uint256 amount,
-        uint256 tradePrice
-    ) internal virtual {
-        // TODO: 请实现此函数
-        // 步骤:
-        // 1. 获取用户当前持仓
-        // 2. 判断是加仓还是减仓/平仓
-        // 3. 加仓: 计算加权平均入场价，增加持仓
-        // 4. 减仓: 计算已实现盈亏，更新 margin
-        // 5. 更新持仓 size 和 entryPrice
+    address trader,
+    bool isBuy,
+    uint256 amount,
+    uint256 tradePrice
+) internal virtual {
+    Position storage p = accounts[trader].position;
+    int256 signed = isBuy ? int256(amount) : -int256(amount);
+    uint256 existingAbs = SignedMath.abs(p.size);
+
+    // 1) 同方向加仓
+    if (p.size == 0 || (p.size > 0) == (signed > 0)) {
+        uint256 newAbs = existingAbs + amount;
+        uint256 weighted = existingAbs == 0
+            ? tradePrice
+            : (existingAbs * p.entryPrice + amount * tradePrice) / newAbs;
+        p.entryPrice = weighted;
+        p.size += signed;
+        emit PositionUpdated(trader, p.size, p.entryPrice);
+        return;
     }
+
+    // 2) 反向减仓/平仓
+    uint256 closing = amount < existingAbs ? amount : existingAbs;
+    int256 pnlPerUnit = p.size > 0
+        ? int256(tradePrice) - int256(p.entryPrice)
+        : int256(p.entryPrice) - int256(tradePrice);
+    int256 pnl = (pnlPerUnit * int256(closing)) / int256(SCALE);
+
+    // 盈亏直接结算到 margin（无需单独记录 realizedPnl）
+    int256 newMargin = int256(accounts[trader].margin) + pnl;
+    if (newMargin < 0) accounts[trader].margin = 0;
+    else accounts[trader].margin = uint256(newMargin);
+
+    // 3) 是否反向开仓
+    uint256 remaining = amount - closing;
+    if (closing == existingAbs) {
+        if (remaining == 0) {
+            p.size = 0;
+            p.entryPrice = tradePrice;
+        } else {
+            p.size = signed > 0 ? int256(remaining) : -int256(remaining);
+            p.entryPrice = tradePrice;
+        }
+    } else {
+        if (p.size > 0) p.size -= int256(closing);
+        else p.size += int256(closing);
+    }
+    
+    // Day 5 优化：发出 PositionUpdated 事件，简化 Indexer 逻辑
+    emit PositionUpdated(trader, p.size, p.entryPrice);
+}
 }

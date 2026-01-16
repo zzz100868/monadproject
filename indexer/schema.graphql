@@ -20,14 +20,14 @@ type Order @entity {
 
 type Trade @entity {
   id: ID!
-  price: BigInt!
-  amount: BigInt!
   buyer: String!
   seller: String!
-  buyOrderId: String!
-  sellOrderId: String!
+  price: BigInt!
+  amount: BigInt!
   timestamp: Int!
   txHash: String!
+  buyOrderId: BigInt!
+  sellOrderId: BigInt!
 }
 
 type Candle @entity {
@@ -48,9 +48,8 @@ type LatestCandle @entity {
 }
 
 type Position @entity {
-  id: ID!
+  id: ID!  # trader address
   trader: String!
   size: BigInt!
   entryPrice: BigInt!
-  timestamp: Int!
 }

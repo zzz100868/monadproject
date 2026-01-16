@@ -213,16 +213,19 @@ class ExchangeStore {
   // ============================================
   // Day 5 TODO: 从 Indexer 获取最近成交
   // ============================================
-  loadTrades = async (): Promise<Trade[]> => {
-    // TODO: Day 5 - 实现从 Indexer 获取最近成交
-    // 步骤:
-    // 1. 使用 client.query(GET_RECENT_TRADES, {}).toPromise() 查询
-    // 2. 从 result.data?.Trade 获取成交数组
-    // 3. 转换为 Trade 格式 (id, price, amount, time, side)
-    // 4. side 判断: BigInt(buyOrderId) > BigInt(sellOrderId) ? 'buy' : 'sell'
-    // 5. 使用 runInAction 更新 this.trades
-    return [];
-  };
+ loadTrades = async (): Promise<Trade[]> => {
+    const result = await client.query(GET_RECENT_TRADES, {}).toPromise();
+    if (!result.data?.Trade) return [];
+    const trades = result.data.Trade.map((t: any) => ({
+        id: t.id,
+        price: Number(formatEther(t.price)),
+        amount: Number(formatEther(t.amount)),
+        time: new Date(t.timestamp * 1000).toLocaleTimeString(),
+        side: BigInt(t.buyOrderId) > BigInt(t.sellOrderId) ? 'buy' : 'sell',
+    }));
+    runInAction(() => { this.trades = trades; });
+    return trades;
+};
 
   // ============================================
   // Day 2: 从 Indexer 获取用户订单（健壮实现）
@@ -290,16 +293,21 @@ class ExchangeStore {
         this.fundingRate = 0;
       });
 
-      if (this.account) {
-        const m = await publicClient.readContract({
-  abi: EXCHANGE_ABI,
-  address,
-  functionName: 'margin',
-  args: [this.account],
-} as any) as bigint;
-
-        // Position fetching from Indexer to be implemented in Day 5
-        let pos: PositionSnapshot = { size: 0n, entryPrice: 0n };
+       if (this.account) {
+        const [m, pos] = await Promise.all([
+          publicClient.readContract({
+            abi: EXCHANGE_ABI,
+            address,
+            functionName: 'margin',
+            args: [this.account],
+          } as any) as Promise<bigint>,
+          publicClient.readContract({
+            abi: EXCHANGE_ABI,
+            address,
+            functionName: 'getPosition',
+            args: [this.account],
+          } as any) as Promise<PositionSnapshot>,
+        ]);
 
         runInAction(() => {
           this.margin = m;
@@ -363,7 +371,7 @@ class ExchangeStore {
       });
 
       // Load Trades (Day 5)
-      // await this.loadTrades();
+       await this.loadTrades();
 
       // Load Candles (Day 5)
       // this.loadCandles();
@@ -385,7 +393,7 @@ class ExchangeStore {
         });
       } else {
         runInAction(() => {
-          this.myOrders = [];
+       this.myOrders = [];
         });
       }
 

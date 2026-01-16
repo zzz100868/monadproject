@@ -28,8 +28,7 @@ abstract contract ViewModule is ExchangeStorage {
     /// @param trader 用户地址
     /// @return 持仓结构体
     function getPosition(address trader) external view virtual returns (Position memory) {
-        // TODO: 请实现此函数
-        //revert("Not implemented");
-    }
+    return accounts[trader].position;
+}
 }
 

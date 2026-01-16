@@ -51,14 +51,14 @@ Exchange.TradeExecuted.handler(async ({ event, context }) => {
         amount: tradeAmount,
         buyer: toLower(event.params.buyer),
         seller: toLower(event.params.seller),
-        buyOrderId: event.params.buyOrderId.toString(),
-        sellOrderId: event.params.sellOrderId.toString(),
+        buyOrderId: event.params.buyOrderId,
+        sellOrderId: event.params.sellOrderId,
         timestamp,
         txHash: event.transaction.hash,
     };
     context.Trade.set(trade);
 
-    const buyOrder = await context.Order.get(trade.buyOrderId);
+    const buyOrder = await context.Order.get(trade.buyOrderId.toString());
     if (buyOrder) {
         const remaining = buyOrder.amount - tradeAmount;
         context.Order.set({
@@ -69,7 +69,7 @@ Exchange.TradeExecuted.handler(async ({ event, context }) => {
         });
     }
 
-    const sellOrder = await context.Order.get(trade.sellOrderId);
+    const sellOrder = await context.Order.get(trade.sellOrderId.toString());
     if (sellOrder) {
         const remaining = sellOrder.amount - tradeAmount;
         context.Order.set({
@@ -159,7 +159,6 @@ async function updatePosition(
         trader,
         size: newSize,
         entryPrice: newEntry,
-        timestamp,
     };
     context.Position.set(position);
 }
@@ -186,4 +185,13 @@ Exchange.OrderRemoved.handler(async ({ event, context }) => {
             amount: 0n, // 清零以便 GET_OPEN_ORDERS 过滤
         });
     }
+});
+Exchange.PositionUpdated.handler(async ({ event, context }) => {
+    const position: Position = {
+        id: toLower(event.params.trader),
+        trader: toLower(event.params.trader),
+        size: event.params.size,
+        entryPrice: event.params.entryPrice,
+    };
+    context.Position.set(position);
 });
