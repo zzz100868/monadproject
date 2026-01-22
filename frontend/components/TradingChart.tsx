@@ -5,8 +5,8 @@ import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, Candlesti
 import { formatEther } from 'viem';
 
 export const TradingChart: React.FC = observer(() => {
-  const { candles, currentPrice } = useExchangeStore();
-  console.log('[TradingChart] candles from store:', candles);
+  const { candles, activeMarket } = useExchangeStore();
+  console.log('[TradingChart] candles from store:', candles, 'market:', activeMarket.symbol);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -108,7 +108,7 @@ export const TradingChart: React.FC = observer(() => {
     <div className="flex flex-col h-full bg-[#1A1D26] rounded-lg border border-gray-800 p-4">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold text-white">ETH/USD</h2>
+          <h2 className="text-lg font-semibold text-white">{activeMarket.symbol}</h2>
           <div className="flex gap-2">
             <span className="text-sm text-gray-400">15m</span>
             <span className="text-sm text-gray-600">1h</span>

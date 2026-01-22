@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useExchangeStore } from '../store/exchangeStore';
 import { CHAIN_ID, RPC_URL } from '../onchain/config';
+import { formatEther } from 'viem';
+import { Market } from '../markets';
 
 const shortenAddress = (addr?: string) => {
   if (!addr) return '';
@@ -9,8 +11,12 @@ const shortenAddress = (addr?: string) => {
 };
 
 export const Header: React.FC = observer(() => {
-  const { account, connectWallet, markPrice, syncing, accountIndex, switchAccount } = useExchangeStore();
-  const priceDisplay = markPrice > 0n ? Number(markPrice) : undefined;
+  const { account, connectWallet, markPrice, syncing, accountIndex, switchAccount, activeMarket, markets, setActiveMarket } = useExchangeStore();
+  const [marketDropdownOpen, setMarketDropdownOpen] = useState(false);
+
+  const priceDisplay = markPrice > 0n
+    ? Number(formatEther(markPrice)).toLocaleString(undefined, { minimumFractionDigits: activeMarket.decimals, maximumFractionDigits: activeMarket.decimals })
+    : '--';
 
   return (
     <header className="h-16 border-b border-white/5 bg-[#0B0E14] flex items-center justify-between px-6 sticky top-0 z-50">
@@ -25,6 +31,43 @@ export const Header: React.FC = observer(() => {
           <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
             PerpM
           </span>
+        </div>
+
+        {/* Market Selector */}
+        <div className="relative">
+          <button
+            onClick={() => setMarketDropdownOpen(!marketDropdownOpen)}
+            className="flex items-center gap-2 bg-[#151924] hover:bg-[#1a1f2e] border border-white/10 px-4 py-2 rounded-lg transition-colors"
+          >
+            <span className="text-lg">{activeMarket.icon}</span>
+            <span className="text-white font-semibold">{activeMarket.symbol}</span>
+            <span className="text-nebula-teal font-mono text-sm">${priceDisplay}</span>
+            <svg className={`w-4 h-4 text-gray-400 transition-transform ${marketDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {marketDropdownOpen && (
+            <div className="absolute top-full left-0 mt-2 w-56 bg-[#151924] border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden">
+              {markets.map((market: Market) => (
+                <button
+                  key={market.id}
+                  onClick={() => {
+                    setActiveMarket(market);
+                    setMarketDropdownOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors ${activeMarket.id === market.id ? 'bg-nebula-violet/20 border-l-2 border-nebula-violet' : ''
+                    }`}
+                >
+                  <span className="text-xl">{market.icon}</span>
+                  <div className="flex flex-col items-start">
+                    <span className="text-white font-medium">{market.symbol}</span>
+                    <span className="text-xs text-gray-500">{market.baseAsset} Perpetual</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="hidden md:flex items-center bg-[#151924] border border-white/10 px-4 py-1.5 rounded-lg text-xs text-gray-400 gap-3">
@@ -95,3 +138,4 @@ export const Header: React.FC = observer(() => {
     </header>
   );
 });
+

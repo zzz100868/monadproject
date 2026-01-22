@@ -5,6 +5,7 @@ type MarginEvent @entity {
   eventType: String!
   timestamp: Int!
   txHash: String!
+  marketId: String!
 }
 
 type Order @entity {
@@ -16,6 +17,7 @@ type Order @entity {
   initialAmount: BigInt!
   timestamp: Int!
   status: String!
+  marketId: String!
 }
 
 type Trade @entity {
@@ -28,6 +30,7 @@ type Trade @entity {
   txHash: String!
   buyOrderId: BigInt!
   sellOrderId: BigInt!
+  marketId: String!
 }
 
 type Candle @entity {
@@ -39,19 +42,22 @@ type Candle @entity {
   lowPrice: BigInt!
   closePrice: BigInt!
   volume: BigInt!
+  marketId: String!
 }
 
 type LatestCandle @entity {
   id: ID!
   closePrice: BigInt!
   timestamp: Int!
+  marketId: String!
 }
 
 type Position @entity {
-  id: ID!  # trader address
+  id: ID!  # marketId-trader
   trader: String!
   size: BigInt!
   entryPrice: BigInt!
+  marketId: String!
 }
 type FundingEvent @entity {
   id: ID!
@@ -60,6 +66,7 @@ type FundingEvent @entity {
   cumulativeRate: BigInt
   payment: BigInt     # 仅 USER_PAID 时有值
   timestamp: Int!
+  marketId: String!
 }
 type Liquidation @entity {
   id: ID!
@@ -69,4 +76,5 @@ type Liquidation @entity {
   fee: BigInt!
   timestamp: Int!
   txHash: String!
+  marketId: String!
 }

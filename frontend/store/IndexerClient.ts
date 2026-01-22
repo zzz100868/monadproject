@@ -26,8 +26,8 @@ export const client = {
 };
 
 export const GET_CANDLES = `
-  query GetCandles {
-    Candle(order_by: { timestamp: desc }, limit: 100) {
+  query GetCandles($marketId: String!) {
+    Candle(where: { marketId: { _eq: $marketId } }, order_by: { timestamp: desc }, limit: 100) {
       id
       timestamp
       openPrice
@@ -40,8 +40,8 @@ export const GET_CANDLES = `
 `;
 
 export const GET_RECENT_TRADES = `
-  query GetRecentTrades {
-    Trade(order_by: { timestamp: desc }, limit: 50) {
+  query GetRecentTrades($marketId: String!) {
+    Trade(where: { marketId: { _eq: $marketId } }, order_by: { timestamp: desc }, limit: 50) {
       id
       price
       amount

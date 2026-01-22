@@ -6,7 +6,8 @@ import { EXCHANGE_ADDRESS, EXCHANGE_DEPLOY_BLOCK } from '../onchain/config';
 import { chain, getWalletClient, publicClient, fallbackAccount, ACCOUNTS } from '../onchain/client';
 import { OrderBookItem, OrderSide, OrderType, PositionSnapshot, Trade, CandleData } from '../types';
 import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';
-import {  GET_MY_TRADES } from './IndexerClient';
+import { GET_MY_TRADES } from './IndexerClient';
+import { Market, MARKETS, DEFAULT_MARKET, getMarketContractAddress } from '../markets';
 type OrderStruct = {
   id: bigint;
   trader: Address;
@@ -38,6 +39,10 @@ class ExchangeStore {
   accountIndex = 0; // New observable state
   margin = 0n;
 
+  // Multi-market support
+  activeMarket: Market = DEFAULT_MARKET;
+  markets: Market[] = MARKETS;
+
   position?: PositionSnapshot;
   markPrice = 0n;
   indexPrice = 0n;
@@ -64,9 +69,15 @@ class ExchangeStore {
     console.info('[store] 交易所 store 初始化完成');
   }
 
-  ensureContract() {
-    if (!EXCHANGE_ADDRESS) throw new Error('Set VITE_EXCHANGE_ADDRESS');
-    return EXCHANGE_ADDRESS;
+  ensureContract(): Address {
+    // Get contract address for active market
+    const address = getMarketContractAddress(this.activeMarket);
+    if (!address) {
+      // Fallback to default exchange address
+      if (!EXCHANGE_ADDRESS) throw new Error('Set VITE_EXCHANGE_ADDRESS');
+      return EXCHANGE_ADDRESS;
+    }
+    return address as Address;
   }
 
   autoConnect = async () => {
@@ -105,6 +116,18 @@ class ExchangeStore {
       this.account = newAccount.address;
       this.refresh();
     });
+  };
+
+  // Switch active market
+  setActiveMarket = (market: Market) => {
+    runInAction(() => {
+      this.activeMarket = market;
+      // Clear existing data before fetching new market data
+      this.candles = [];
+      this.trades = [];
+      this.orderBook = { bids: [], asks: [] };
+    });
+    this.refresh();
   };
 
   mapOrder(data: any): OrderStruct {
@@ -201,35 +224,40 @@ class ExchangeStore {
   // Day 5 TODO: 从 Indexer 获取 K 线数据
   // ============================================
   loadCandles = async () => {
-    const result = await client.query(GET_CANDLES, {}).toPromise();
+    const result = await client.query(GET_CANDLES, { marketId: this.activeMarket.id }).toPromise();
     if (result.data?.Candle) {
-        const candles = result.data.Candle.map((c: any) => ({
-            time: new Date(c.timestamp * 1000).toISOString(),
-            open: Number(formatEther(c.openPrice)),
-            high: Number(formatEther(c.highPrice)),
-            low: Number(formatEther(c.lowPrice)),
-            close: Number(formatEther(c.closePrice)),
-        }));
-        runInAction(() => { this.candles = candles; });
+      const candles = result.data.Candle.map((c: any) => ({
+        time: new Date(c.timestamp * 1000).toISOString(),
+        open: Number(formatEther(c.openPrice)),
+        high: Number(formatEther(c.highPrice)),
+        low: Number(formatEther(c.lowPrice)),
+        close: Number(formatEther(c.closePrice)),
+      }));
+      runInAction(() => { this.candles = candles; });
     }
-}
+  }
 
   // ============================================
   // Day 5 TODO: 从 Indexer 获取最近成交
   // ============================================
- loadTrades = async (): Promise<Trade[]> => {
-    const result = await client.query(GET_RECENT_TRADES, {}).toPromise();
+  loadTrades = async (): Promise<Trade[]> => {
+    const result = await client.query(GET_RECENT_TRADES, { marketId: this.activeMarket.id }).toPromise();
     if (!result.data?.Trade) return [];
     const trades = result.data.Trade.map((t: any) => ({
-        id: t.id,
-        price: Number(formatEther(t.price)),
-        amount: Number(formatEther(t.amount)),
-        time: new Date(t.timestamp * 1000).toLocaleTimeString(),
-        side: BigInt(t.buyOrderId) > BigInt(t.sellOrderId) ? 'buy' : 'sell',
+      id: t.id,
+      price: Number(formatEther(t.price)),
+      amount: Number(formatEther(t.amount)),
+      time: new Date(t.timestamp * 1000).toLocaleTimeString(),
+      // Order IDs now have format 'marketId-orderId', extract numeric part
+      side: (() => {
+        const buyId = String(t.buyOrderId).split('-').pop() || '0';
+        const sellId = String(t.sellOrderId).split('-').pop() || '0';
+        return BigInt(buyId) > BigInt(sellId) ? 'buy' : 'sell';
+      })(),
     }));
     runInAction(() => { this.trades = trades; });
     return trades;
-};
+  };
 
   // ============================================
   // Day 2: 从 Indexer 获取用户订单（健壮实现）
@@ -243,15 +271,19 @@ class ExchangeStore {
       return [];
     }
     const orders = res.data?.Order || [];
-    return orders.map((o: any) => ({
-      id: BigInt(o.id),
-      isBuy: !!o.isBuy,
-      price: BigInt(o.price),
-      amount: BigInt(o.amount),
-      initialAmount: BigInt(o.initialAmount ?? o.amount),
-      timestamp: BigInt(o.timestamp ?? 0),
-      trader: addr as Address,
-    }));
+    return orders.map((o: any) => {
+      // Order IDs now have format 'marketId-orderId', extract numeric part
+      const numericId = String(o.id).split('-').pop() || '0';
+      return {
+        id: BigInt(numericId),
+        isBuy: !!o.isBuy,
+        price: BigInt(o.price),
+        amount: BigInt(o.amount),
+        initialAmount: BigInt(o.initialAmount ?? o.amount),
+        timestamp: BigInt(o.timestamp ?? 0),
+        trader: addr as Address,
+      };
+    });
   };
 
   // ============================================
@@ -261,18 +293,18 @@ class ExchangeStore {
     const result = await client.query(GET_MY_TRADES, { trader: trader.toLowerCase() }).toPromise();
     if (!result.data?.Trade) return [];
     const trades = result.data.Trade.map((t: any) => ({
-        id: t.id,
-        price: Number(formatEther(t.price)),
-        amount: Number(formatEther(t.amount)),
-        time: new Date(t.timestamp * 1000).toLocaleTimeString(),
-        side: t.buyer.toLowerCase() === trader.toLowerCase() ? 'buy' : 'sell',
+      id: t.id,
+      price: Number(formatEther(t.price)),
+      amount: Number(formatEther(t.amount)),
+      time: new Date(t.timestamp * 1000).toLocaleTimeString(),
+      side: t.buyer.toLowerCase() === trader.toLowerCase() ? 'buy' : 'sell',
     }));
     runInAction(() => { this.myTrades = trades; });
     return trades;
-};
+  };
 
   refresh = async (silent = false) => {
-    
+
     try {
       if (!silent) {
         runInAction(() => {
@@ -288,33 +320,33 @@ class ExchangeStore {
         publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'bestSellId' } as any) as Promise<bigint>,
         publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'initialMarginBps' } as any) as Promise<bigint>,
       ]);
-     const m = Number(formatEther(mark));
-const i = Number(formatEther(index));
-let funding = 0;
-if (i !== 0) {
-  const premiumIndex = (m - i) / i;
-  const interestRate = 0.0001; // 0.01%
-  const clampRange = 0.0005;   // 0.05%
-  let diff = interestRate - premiumIndex;
-  if (diff > clampRange) diff = clampRange;
-  if (diff < -clampRange) diff = -clampRange;
-  funding = premiumIndex + diff;
-}
+      const m = Number(formatEther(mark));
+      const i = Number(formatEther(index));
+      let funding = 0;
+      if (i !== 0) {
+        const premiumIndex = (m - i) / i;
+        const interestRate = 0.0001; // 0.01%
+        const clampRange = 0.0005;   // 0.05%
+        let diff = interestRate - premiumIndex;
+        if (diff > clampRange) diff = clampRange;
+        if (diff < -clampRange) diff = -clampRange;
+        funding = premiumIndex + diff;
+      }
 
       console.debug('[orderbook] head ids', {
         bestBid: bestBid?.toString?.(),
         bestAsk: bestAsk?.toString?.(),
         address,
       });
-     runInAction(() => {
-  this.markPrice = mark;
-  this.indexPrice = index;
-  this.initialMarginBps = imBps;
-  this.fundingRate = funding; // 使用计算结果，不再覆盖为 0
-  console.debug('[store.refresh] fundingRate', funding); // 可选，用于验证
-});
+      runInAction(() => {
+        this.markPrice = mark;
+        this.indexPrice = index;
+        this.initialMarginBps = imBps;
+        this.fundingRate = funding; // 使用计算结果，不再覆盖为 0
+        console.debug('[store.refresh] fundingRate', funding); // 可选，用于验证
+      });
 
-       if (this.account) {
+      if (this.account) {
         const [m, pos] = await Promise.all([
           publicClient.readContract({
             abi: EXCHANGE_ABI,
@@ -392,10 +424,10 @@ if (i !== 0) {
       });
 
       // Load Trades (Day 5)
-       await this.loadTrades();
+      await this.loadTrades();
 
       // Load Candles (Day 5)
-       await this.loadCandles();
+      await this.loadCandles();
 
       // ============================================
       // Day 2: 从 Indexer 获取我的订单（短轮询以等待 indexer 写入）
@@ -414,7 +446,7 @@ if (i !== 0) {
         });
       } else {
         runInAction(() => {
-       this.myOrders = [];
+          this.myOrders = [];
         });
       }
 
@@ -422,9 +454,9 @@ if (i !== 0) {
       // Day 5 TODO: 从 Indexer 获取我的成交历史
       // ============================================
       // TODO: Day 5 - 调用 loadMyTrades 获取用户成交历史
-       if (this.account) {
+      if (this.account) {
         await this.loadMyTrades(this.account);
-       }
+      }
     } catch (e) {
       if (!silent) {
         runInAction(() => (this.error = (e as Error)?.message || 'Failed to sync exchange data'));
@@ -440,95 +472,95 @@ if (i !== 0) {
   // Day 1 TODO: 实现充值函数
   // ============================================
   deposit = async (ethAmount: string) => {
-  if (!this.walletClient || !this.account) throw new Error('Connect wallet before depositing');
-  const hash = await this.walletClient.writeContract({
-    account: this.account,
-    chain: this.walletClient.chain,
-    address: this.ensureContract(),
-    abi: EXCHANGE_ABI,
-    functionName: 'deposit',
-    value: parseEther(ethAmount),
-  } as any);
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') throw new Error('Transaction failed');
-  await this.refresh();
-}
+    if (!this.walletClient || !this.account) throw new Error('Connect wallet before depositing');
+    const hash = await this.walletClient.writeContract({
+      account: this.account,
+      chain: this.walletClient.chain,
+      address: this.ensureContract(),
+      abi: EXCHANGE_ABI,
+      functionName: 'deposit',
+      value: parseEther(ethAmount),
+    } as any);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new Error('Transaction failed');
+    await this.refresh();
+  }
 
   // ============================================
   // Day 1 TODO: 实现提现函数
   // ============================================
   withdraw = async (amount: string) => {
-  if (!this.walletClient || !this.account) throw new Error('Connect wallet before withdrawing');
-  const parsed = parseEther(amount || '0');
-  const hash = await this.walletClient.writeContract({
-    account: this.account,
-    chain: this.walletClient.chain,
-    address: this.ensureContract(),
-    abi: EXCHANGE_ABI,
-    functionName: 'withdraw',
-    args: [parsed],
-  });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') throw new Error('Transaction failed');
-  await this.refresh();
-}
+    if (!this.walletClient || !this.account) throw new Error('Connect wallet before withdrawing');
+    const parsed = parseEther(amount || '0');
+    const hash = await this.walletClient.writeContract({
+      account: this.account,
+      chain: this.walletClient.chain,
+      address: this.ensureContract(),
+      abi: EXCHANGE_ABI,
+      functionName: 'withdraw',
+      args: [parsed],
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new Error('Transaction failed');
+    await this.refresh();
+  }
 
   // ============================================
   // Day 2 TODO: 实现下单函数
   // ============================================
   placeOrder = async (params: { side: OrderSide; orderType?: OrderType; price?: string; amount: string; hintId?: string }) => {
-  const { side, orderType = OrderType.LIMIT, price, amount, hintId } = params;
-  if (!this.walletClient || !this.account) throw new Error('Connect wallet before placing orders');
+    const { side, orderType = OrderType.LIMIT, price, amount, hintId } = params;
+    if (!this.walletClient || !this.account) throw new Error('Connect wallet before placing orders');
 
-  // 处理市价单：使用 markPrice 加滑点
-  const currentPrice = this.markPrice > 0n ? this.markPrice : parseEther('1500');
-  const parsedPrice = price ? parseEther(price) : currentPrice;
-  const effectivePrice =
-    orderType === OrderType.MARKET
-      ? side === OrderSide.BUY
-        ? currentPrice + parseEther('100')  // 买单加滑点
-        : currentPrice - parseEther('100') > 0n ? currentPrice - parseEther('100') : 1n
-      : parsedPrice;
+    // 处理市价单：使用 markPrice 加滑点
+    const currentPrice = this.markPrice > 0n ? this.markPrice : parseEther('1500');
+    const parsedPrice = price ? parseEther(price) : currentPrice;
+    const effectivePrice =
+      orderType === OrderType.MARKET
+        ? side === OrderSide.BUY
+          ? currentPrice + parseEther('100')  // 买单加滑点
+          : currentPrice - parseEther('100') > 0n ? currentPrice - parseEther('100') : 1n
+        : parsedPrice;
 
-  const parsedAmount = parseEther(amount);
-  const parsedHint = hintId ? BigInt(hintId) : 0n;
+    const parsedAmount = parseEther(amount);
+    const parsedHint = hintId ? BigInt(hintId) : 0n;
 
-  const hash = await this.walletClient.writeContract({
-    account: this.account,
-    address: this.ensureContract(),
-    abi: EXCHANGE_ABI,
-    functionName: 'placeOrder',
-    args: [side === OrderSide.BUY, effectivePrice, parsedAmount, parsedHint],
-    chain: undefined,
-  } as any);
+    const hash = await this.walletClient.writeContract({
+      account: this.account,
+      address: this.ensureContract(),
+      abi: EXCHANGE_ABI,
+      functionName: 'placeOrder',
+      args: [side === OrderSide.BUY, effectivePrice, parsedAmount, parsedHint],
+      chain: undefined,
+    } as any);
 
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') throw new Error('Transaction failed');
-  await this.refresh();
-}
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new Error('Transaction failed');
+    await this.refresh();
+  }
 
   // ============================================
   // Day 2 TODO: 实现取消订单函数
   // ============================================
   cancelOrder = async (orderId: bigint) => {
-  if (!this.walletClient || !this.account) throw new Error('Connect wallet before cancelling orders');
-  runInAction(() => { this.cancellingOrderId = orderId; });
-  try {
-    const hash = await this.walletClient.writeContract({
-      account: this.account,
-      address: this.ensureContract(),
-      abi: EXCHANGE_ABI,
-      functionName: 'cancelOrder',
-      args: [orderId],
-      chain: undefined,
-    } as any);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status !== 'success') throw new Error('Transaction failed');
-    await this.refresh();
-  } finally {
-    runInAction(() => { this.cancellingOrderId = undefined; });
+    if (!this.walletClient || !this.account) throw new Error('Connect wallet before cancelling orders');
+    runInAction(() => { this.cancellingOrderId = orderId; });
+    try {
+      const hash = await this.walletClient.writeContract({
+        account: this.account,
+        address: this.ensureContract(),
+        abi: EXCHANGE_ABI,
+        functionName: 'cancelOrder',
+        args: [orderId],
+        chain: undefined,
+      } as any);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error('Transaction failed');
+      await this.refresh();
+    } finally {
+      runInAction(() => { this.cancellingOrderId = undefined; });
+    }
   }
-}
 }
 
 const ExchangeStoreContext = createContext<ExchangeStore | null>(null);

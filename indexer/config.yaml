@@ -1,5 +1,5 @@
 name: monad-exchange-indexer
-description: Indexer for Monad Perpetual Exchange events
+description: Indexer for Monad Perpetual Exchange events (Multi-Market)
 
 field_selection:
   transaction_fields:
@@ -13,7 +13,9 @@ networks:
     contracts:
       - name: Exchange
         address:
-          -  0xc401bda4ccb987cd5131d74a16fd01567489e282   # <-- 用你部署的地址替换
+          - 0x60f02157159b12bae61f2adce391b88324e4606e  # ETH-USD
+          - 0xc0cbd77ba95788e2462b755ee1fd42c6a4946901  # SOL-USD
+          - 0xaf7adbc53376d6ecf6668758eeddef4aa162eab2  # BTC-USD
         handler: src/EventHandlers.ts
         events:
           - event: MarginDeposited(address indexed trader, uint256 amount)

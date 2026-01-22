@@ -19,7 +19,7 @@ export const OrderForm: React.FC = observer(() => {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [isOrdering, setIsOrdering] = useState(false);
   const store = useExchangeStore();
-  const { account, margin, markPrice, placeOrder, deposit, withdraw, connectWallet, syncing, error } =
+  const { account, margin, markPrice, placeOrder, deposit, withdraw, connectWallet, syncing, error, activeMarket } =
     store;
 
   const availableMargin = Number(formatEther(margin));
@@ -192,7 +192,7 @@ export const OrderForm: React.FC = observer(() => {
       <div className="space-y-3 shrink-0">
         <div className="bg-[#0B0E14] border border-white/10 rounded-lg px-3 py-2 flex items-center justify-between group focus-within:border-nebula-violet/50 transition-colors">
           <div className="flex flex-col">
-            <label className="text-[10px] text-gray-500 uppercase">Amount (ETH)</label>
+            <label className="text-[10px] text-gray-500 uppercase">Amount ({activeMarket.baseAsset})</label>
             <input
               type="text"
               placeholder="1 (units)"
@@ -201,7 +201,7 @@ export const OrderForm: React.FC = observer(() => {
               className="bg-transparent border-none outline-none text-white text-sm w-full font-mono placeholder-gray-700"
             />
           </div>
-          <span className="text-xs text-gray-400 font-medium">ETH</span>
+          <span className="text-xs text-gray-400 font-medium">{activeMarket.baseAsset}</span>
         </div>
 
         {orderType === OrderType.LIMIT && (
