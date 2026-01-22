@@ -13,9 +13,9 @@ networks:
     contracts:
       - name: Exchange
         address:
-          - 0x748f3d7c82a16514e7c0a770c43aec0a281f1b75  # ETH-USD
-          - 0xfab862bed5efc48fa9e46ea41902d5597a4ec71f  # SOL-USD
-          - 0xe42cc83be6660a3b40aba4548d2c742a5053851b  # BTC-USD
+          - 0x33c5e0c6db699365b5d386069b2b2505c22db05f  # ETH-USD
+          - 0x213e6e8c056948280c1e9b061d4e8479bbd7be23  # SOL-USD
+          - 0x8bd2b8aa96e00cd7c888a1ee2cdc68551fb3b467  # BTC-USD
         handler: src/EventHandlers.ts
         events:
           - event: MarginDeposited(address indexed trader, uint256 amount)
