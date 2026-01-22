@@ -59,10 +59,14 @@ export const Positions: React.FC = observer(() => {
 
     const pnlPercent = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
 
-    // TODO Day 7: 计算保证金率 (marginRatio)
-    // marginRatio = (freeMargin + pnl) / positionValue * 100
-    // 用于显示账户健康度
-    const marginRatio = 100; // 占位值，请实现计算逻辑
+   const marginRatio = (() => {
+    const marginBalance = freeMargin + pnl;  // margin + unrealizedPnl
+    const positionValue = mark * absSize;
+    if (positionValue === 0) return 100;
+    return (marginBalance / positionValue) * 100;
+})();
+
+     // 占位值，请实现计算逻辑
 
     return {
       symbol: 'ETH',
@@ -113,7 +117,20 @@ export const Positions: React.FC = observer(() => {
                   <th className="pb-3 text-right">Entry Price</th>
                   <th className="pb-3 text-right">Mark Price</th>
                   <th className="pb-3 text-right">Liq. Price</th>
-                  {/* TODO Day 7: 添加 Health 列表头 */}
+                   <th className="pb-3 text-right">Health</th>
+                   <td className="py-3 text-right font-mono">
+  {displayPosition ? (
+    <span className={
+      displayPosition.marginRatio < 2 ? 'text-red-500' :
+      displayPosition.marginRatio < 5 ? 'text-yellow-500' :
+      'text-green-500'
+    }>
+      {displayPosition.marginRatio.toFixed(1)}%
+    </span>
+  ) : (
+    <span className="text-gray-500">-</span>
+  )}
+</td>
                   <th className="pb-3 text-right">PnL (ROE%)</th>
                 </tr>
               </thead>

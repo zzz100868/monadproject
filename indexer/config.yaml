@@ -13,7 +13,7 @@ networks:
     contracts:
       - name: Exchange
         address:
-          -  0xa859c3e68dac9fb3c86530720894a9c86406c31f   # <-- 用你部署的地址替换
+          -  0xc401bda4ccb987cd5131d74a16fd01567489e282   # <-- 用你部署的地址替换
         handler: src/EventHandlers.ts
         events:
           - event: MarginDeposited(address indexed trader, uint256 amount)
@@ -22,3 +22,6 @@ networks:
           - event: OrderRemoved(uint256 indexed id)
           - event: TradeExecuted(uint256 indexed buyOrderId, uint256 indexed sellOrderId, uint256 price, uint256 amount, address buyer, address seller)
           - event: PositionUpdated(address indexed trader, int256 size, uint256 entryPrice)
+          - event: Liquidated(address indexed trader, address indexed liquidator, uint256 amount, uint256 reward)
+          - event: FundingUpdated(int256 cumulativeFundingRate, uint256 timestamp)
+          - event: FundingPaid(address indexed trader, int256 amount)

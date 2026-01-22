@@ -53,3 +53,20 @@ type Position @entity {
   size: BigInt!
   entryPrice: BigInt!
 }
+type FundingEvent @entity {
+  id: ID!
+  eventType: String!  # "GLOBAL_UPDATE" 或 "USER_PAID"
+  trader: String      # 仅 USER_PAID 时有值
+  cumulativeRate: BigInt
+  payment: BigInt     # 仅 USER_PAID 时有值
+  timestamp: Int!
+}
+type Liquidation @entity {
+  id: ID!
+  trader: String!
+  liquidator: String!
+  amount: BigInt!
+  fee: BigInt!
+  timestamp: Int!
+  txHash: String!
+}

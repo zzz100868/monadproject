@@ -11,16 +11,22 @@ abstract contract LiquidationModule is PricingModule {
     /// @notice 检查用户是否可被清算
     /// @param trader 用户地址
     /// @return 是否可清算
-    function canLiquidate(address trader) public view virtual returns (bool) {
-        // TODO: 请实现此函数
-        // 步骤:
-        // 1. 获取用户持仓，如果为 0 返回 false
-        // 2. 计算当前标记价下的未实现盈亏
-        // 3. 计算 marginBalance = margin + unrealizedPnl
-        // 4. 计算 maintenance = positionValue * (maintenanceMarginBps + liquidationFeeBps) / 10000
-        // 5. 返回 marginBalance < maintenance
-        return false;
-    }
+   function canLiquidate(address trader) public view virtual returns (bool) {
+    Position memory p = accounts[trader].position;
+    if (p.size == 0) return false;
+
+    // 使用实时计算的 mark price（避免依赖过时的状态）
+    uint256 mark = _calculateMarkPrice(indexPrice);
+
+    int256 unrealized = _unrealizedPnl(p);
+    int256 marginBalance = int256(accounts[trader].margin) + unrealized;
+
+    uint256 priceBase = mark == 0 ? p.entryPrice : mark;
+    uint256 positionValue = SignedMath.abs(int256(priceBase) * p.size) / 1e18;
+    uint256 maintenance = (positionValue * (maintenanceMarginBps + liquidationFeeBps)) / 10_000;
+
+    return marginBalance < int256(maintenance);
+}
 
     /// @notice 清算用户 (在 OrderBookModule 中实现具体逻辑)
     function liquidate(address trader) external virtual nonReentrant {
@@ -30,18 +36,37 @@ abstract contract LiquidationModule is PricingModule {
     /// @notice 清除用户所有挂单
     /// @param trader 用户地址
     function _clearTraderOrders(address trader) internal returns (uint256 freedLocked) {
-        // TODO: 请实现此函数
-        // 步骤:
-        // 1. 遍历买单链表，删除该用户的订单
-        // 2. 遍历卖单链表，删除该用户的订单
-        // 3. 触发 OrderRemoved 事件
-        return 0;
+        uint256 before = pendingOrderCount[trader];
+        bestBuyId = _removeOrders(bestBuyId, trader);
+        bestSellId = _removeOrders(bestSellId, trader);
+        return before - pendingOrderCount[trader];
     }
 
     /// @notice 从链表中删除指定用户的订单
     function _removeOrders(uint256 headId, address trader) internal returns (uint256 newHead) {
-        // TODO: 请实现此函数
-        return headId;
+        newHead = headId;
+        uint256 current = headId;
+        uint256 prev = 0;
+
+        while (current != 0) {
+            Order storage o = orders[current];
+            uint256 next = o.next;
+            if (o.trader == trader) {
+                if (prev == 0) {
+                    newHead = next;
+                } else {
+                    orders[prev].next = next;
+                }
+                // Decrement pending count and emit removal
+                if (pendingOrderCount[trader] > 0) pendingOrderCount[trader]--;
+                emit OrderRemoved(o.id);
+                delete orders[current];
+                current = next;
+                continue;
+            }
+            prev = current;
+            current = next;
+        }
     }
 
     uint256 constant SCALE = 1e18;

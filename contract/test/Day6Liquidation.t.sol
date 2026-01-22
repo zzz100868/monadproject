@@ -9,10 +9,19 @@ contract Day6LiquidationTest is ExchangeFixture {
         super.setUp();
         _deposit(alice, 300 ether); 
         _deposit(bob, 2000 ether);
-        // Carol no longer needs margin to liquidate, she just triggers it.
-        // But she needs margin to place the BUY orders that Alice will match against.
         _deposit(carol, 2000 ether); 
         exchange.setManualPriceMode(true);
+
+        // Ensure deterministic starting state so tests don't depend on previous suites
+        exchange.updatePrices(100 ether, 100 ether);
+        // Set funding params to default (1 hour interval, 0 maxRatePerInterval) to avoid interference
+        exchange.setFundingParams(1 hours, 0);
+
+        // Debug logs to help reproduce cross-test issues when running suites together
+        console.log("Day6Liquidation setUp - markPrice", exchange.markPrice());
+        console.log("Day6Liquidation setUp - indexPrice", exchange.indexPrice());
+        console.log("Day6Liquidation setUp - cumulativeFundingRate", exchange.cumulativeFundingRate());
+        console.log("Day6Liquidation setUp - lastFundingTime", exchange.lastFundingTime());
     }
 
     function testLiquidationMarketClose() public {
@@ -34,6 +43,12 @@ contract Day6LiquidationTest is ExchangeFixture {
         exchange.updatePrices(50 ether, 50 ether);
         
         // Check if liquidatable
+        console.log("pre-liquidation - mark:", exchange.markPrice());
+        console.log("pre-liquidation - index:", exchange.indexPrice());
+        console.log("pre-liquidation - aliceMargin:", exchange.margin(alice));
+        MonadPerpExchange.Position memory p = exchange.getPosition(alice);
+        console.log("pre-liquidation - alicePositionSize:", uint256(int256(p.size)));
+        console.log("pre-liquidation - canLiquidate:", exchange.canLiquidate(alice));
         assertTrue(exchange.canLiquidate(alice), "Alice should be liquidatable");
         
         // 5. Liquidate Alice
@@ -94,6 +109,10 @@ contract Day6LiquidationTest is ExchangeFixture {
         exchange.placeOrder(true, 80 ether, 5 ether, 0);
         
         exchange.updatePrices(50 ether, 50 ether);
+        console.log("partial pre-liquidation - mark:", exchange.markPrice());
+        console.log("partial pre-liquidation - index:", exchange.indexPrice());
+        console.log("partial pre-liquidation - aliceMargin:", exchange.margin(alice));
+        console.log("partial pre-liquidation - canLiquidate:", exchange.canLiquidate(alice));
         assertTrue(exchange.canLiquidate(alice), "Alice should be liquidatable");
         
         // Try to partial liquidate - should REVERT because remaining 5 ETH position is still unhealthy
@@ -109,6 +128,10 @@ contract Day6LiquidationTest is ExchangeFixture {
         exchange.placeOrder(false, 100 ether, 10 ether, 0);
         
         exchange.updatePrices(110 ether, 110 ether); // Price up, Long is happy
+        console.log("healthy-check - mark:", exchange.markPrice());
+        console.log("healthy-check - index:", exchange.indexPrice());
+        console.log("healthy-check - aliceMargin:", exchange.margin(alice));
+        console.log("healthy-check - canLiquidate:", exchange.canLiquidate(alice));
         assertFalse(exchange.canLiquidate(alice), "Should be safe");
         
         vm.expectRevert(bytes("position healthy"));
@@ -142,6 +165,12 @@ contract Day6LiquidationTest is ExchangeFixture {
         vm.prank(carol);
         exchange.placeOrder(true, 60 ether, 20 ether, 0);
         
+        // Debug: state just before liquidation
+        console.log("clearOrders - orderId before:", id);
+        console.log("clearOrders - pendingOrderCount alice:", exchange.pendingOrderCount(alice));
+        console.log("clearOrders - alice margin before:", exchange.margin(alice));
+        console.log("clearOrders - alice position size before:", uint256(int256(exchange.getPosition(alice).size)));
+
         vm.prank(carol);
         exchange.liquidate(alice, 10 ether);
         
@@ -184,7 +213,10 @@ contract Day6LiquidationTest is ExchangeFixture {
         
         // 3. Update Oracle Price to executionPrice (or slightly below to ensure trigger)
         exchange.updatePrices(executionPrice, executionPrice);
-        
+        console.log("fuzz - mark:", exchange.markPrice());
+        console.log("fuzz - index:", exchange.indexPrice());
+        console.log("fuzz - aliceMargin:", exchange.margin(alice));
+        console.log("fuzz - alicePositionSize:", uint256(int256(exchange.getPosition(alice).size)));
         // 4. Check Liquidation Condition
         bool unsafe = exchange.canLiquidate(alice);
         

@@ -6,7 +6,7 @@ import { EXCHANGE_ADDRESS, EXCHANGE_DEPLOY_BLOCK } from '../onchain/config';
 import { chain, getWalletClient, publicClient, fallbackAccount, ACCOUNTS } from '../onchain/client';
 import { OrderBookItem, OrderSide, OrderType, PositionSnapshot, Trade, CandleData } from '../types';
 import { client, GET_CANDLES, GET_RECENT_TRADES, GET_POSITIONS, GET_OPEN_ORDERS } from './IndexerClient';
-
+import {  GET_MY_TRADES } from './IndexerClient';
 type OrderStruct = {
   id: bigint;
   trader: Address;
@@ -201,14 +201,18 @@ class ExchangeStore {
   // Day 5 TODO: 从 Indexer 获取 K 线数据
   // ============================================
   loadCandles = async () => {
-    // TODO: Day 5 - 实现从 Indexer 获取 K 线数据
-    // 步骤:
-    // 1. 使用 client.query(GET_CANDLES, {}).toPromise() 查询
-    // 2. 从 result.data?.Candle 获取蜡烛图数组
-    // 3. 转换为 CandleData 格式 (time, open, high, low, close)
-    //    注意: time 需要转为 ISO 字符串: new Date(c.timestamp * 1000).toISOString()
-    // 4. 使用 runInAction 更新 this.candles
-  };
+    const result = await client.query(GET_CANDLES, {}).toPromise();
+    if (result.data?.Candle) {
+        const candles = result.data.Candle.map((c: any) => ({
+            time: new Date(c.timestamp * 1000).toISOString(),
+            open: Number(formatEther(c.openPrice)),
+            high: Number(formatEther(c.highPrice)),
+            low: Number(formatEther(c.lowPrice)),
+            close: Number(formatEther(c.closePrice)),
+        }));
+        runInAction(() => { this.candles = candles; });
+    }
+}
 
   // ============================================
   // Day 5 TODO: 从 Indexer 获取最近成交
@@ -254,17 +258,21 @@ class ExchangeStore {
   // Day 5 TODO: 从 Indexer 获取用户的成交历史
   // ============================================
   loadMyTrades = async (trader: Address): Promise<Trade[]> => {
-    // TODO: Day 5 - 实现从 Indexer 获取用户成交历史
-    // 步骤:
-    // 1. 使用 client.query(GET_MY_TRADES, { trader: trader.toLowerCase() }).toPromise() 查询
-    // 2. 从 result.data?.Trade 获取成交数组
-    // 3. 转换为 Trade 格式 (id, price, amount, time, side)
-    // 4. side 判断: t.buyer.toLowerCase() === trader.toLowerCase() ? 'buy' : 'sell'
-    // 5. 使用 runInAction 更新 this.myTrades
-    return [];
-  };
+    const result = await client.query(GET_MY_TRADES, { trader: trader.toLowerCase() }).toPromise();
+    if (!result.data?.Trade) return [];
+    const trades = result.data.Trade.map((t: any) => ({
+        id: t.id,
+        price: Number(formatEther(t.price)),
+        amount: Number(formatEther(t.amount)),
+        time: new Date(t.timestamp * 1000).toLocaleTimeString(),
+        side: t.buyer.toLowerCase() === trader.toLowerCase() ? 'buy' : 'sell',
+    }));
+    runInAction(() => { this.myTrades = trades; });
+    return trades;
+};
 
   refresh = async (silent = false) => {
+    
     try {
       if (!silent) {
         runInAction(() => {
@@ -280,18 +288,31 @@ class ExchangeStore {
         publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'bestSellId' } as any) as Promise<bigint>,
         publicClient.readContract({ abi: EXCHANGE_ABI, address, functionName: 'initialMarginBps' } as any) as Promise<bigint>,
       ]);
+     const m = Number(formatEther(mark));
+const i = Number(formatEther(index));
+let funding = 0;
+if (i !== 0) {
+  const premiumIndex = (m - i) / i;
+  const interestRate = 0.0001; // 0.01%
+  const clampRange = 0.0005;   // 0.05%
+  let diff = interestRate - premiumIndex;
+  if (diff > clampRange) diff = clampRange;
+  if (diff < -clampRange) diff = -clampRange;
+  funding = premiumIndex + diff;
+}
+
       console.debug('[orderbook] head ids', {
         bestBid: bestBid?.toString?.(),
         bestAsk: bestAsk?.toString?.(),
         address,
       });
-      runInAction(() => {
-        this.markPrice = mark;
-        this.indexPrice = index;
-        this.initialMarginBps = imBps;
-        // Funding Rate calculation to be implemented in Day 6
-        this.fundingRate = 0;
-      });
+     runInAction(() => {
+  this.markPrice = mark;
+  this.indexPrice = index;
+  this.initialMarginBps = imBps;
+  this.fundingRate = funding; // 使用计算结果，不再覆盖为 0
+  console.debug('[store.refresh] fundingRate', funding); // 可选，用于验证
+});
 
        if (this.account) {
         const [m, pos] = await Promise.all([
@@ -374,7 +395,7 @@ class ExchangeStore {
        await this.loadTrades();
 
       // Load Candles (Day 5)
-      // this.loadCandles();
+       await this.loadCandles();
 
       // ============================================
       // Day 2: 从 Indexer 获取我的订单（短轮询以等待 indexer 写入）
@@ -401,9 +422,9 @@ class ExchangeStore {
       // Day 5 TODO: 从 Indexer 获取我的成交历史
       // ============================================
       // TODO: Day 5 - 调用 loadMyTrades 获取用户成交历史
-      // if (this.account) {
-      //   await this.loadMyTrades(this.account);
-      // }
+       if (this.account) {
+        await this.loadMyTrades(this.account);
+       }
     } catch (e) {
       if (!silent) {
         runInAction(() => (this.error = (e as Error)?.message || 'Failed to sync exchange data'));

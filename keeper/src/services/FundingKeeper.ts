@@ -45,6 +45,40 @@ export class FundingKeeper {
      * 3. 如果是，调用 settleFunding()
      */
     private async checkAndSettle() {
-        // TODO: 实现资金费率结算检查
+    try {
+        // Step 1: 读取合约状态
+        const lastFundingTime = await publicClient.readContract({
+            address: ADDRESS as `0x${string}`,
+            abi: EXCHANGE_ABI,
+            functionName: 'lastFundingTime',
+        }) as bigint;
+
+        const fundingInterval = await publicClient.readContract({
+            address: ADDRESS as `0x${string}`,
+            abi: EXCHANGE_ABI,
+            functionName: 'fundingInterval',
+        }) as bigint;
+
+        // Step 2: 判断是否需要结算
+        const now = BigInt(Math.floor(Date.now() / 1000));
+        if (now < lastFundingTime + fundingInterval) {
+            console.log(`[FundingKeeper] Not yet time. Next settlement in ${Number(lastFundingTime + fundingInterval - now)}s`);
+            return;
+        }
+
+        // Step 3: 调用 settleFunding
+        console.log('[FundingKeeper] Time to settle funding...');
+        const hash = await walletClient.writeContract({
+            address: ADDRESS as `0x${string}`,
+            abi: EXCHANGE_ABI,
+            functionName: 'settleFunding',
+            args: []
+        });
+        await publicClient.waitForTransactionReceipt({ hash });
+        console.log(`[FundingKeeper] Settlement tx: ${hash}`);
+
+    } catch (e) {
+        console.error('[FundingKeeper] Error:', e);
     }
+}
 }

@@ -209,25 +209,92 @@ abstract contract OrderBookModule is MarginModule {
     /// @notice 清算用户
     /// @dev Day 6: 强制平仓
     function liquidate(address trader, uint256 amount) external virtual nonReentrant {
-        // TODO: 请实现此函数
-        // 步骤:
-        // 1. 检查不能自我清算
-        // 2. 检查标记价已设置
-        // 3. 应用资金费
-        // 4. 检查 canLiquidate(trader)
-        // 5. 清除用户挂单
-        // 6. 执行市价平仓
-        // 7. 计算并转移清算费
-        // 8. 触发 Liquidated 事件
+        require(msg.sender != trader, "cannot self-liquidate");
+        require(markPrice > 0, "mark price unset");
+
+        _applyFunding(trader);
+        require(canLiquidate(trader), "position healthy");
+
+        // Remove pending orders so locked margin is freed
+        _clearTraderOrders(trader);
+
+        Position storage p = accounts[trader].position;
+        uint256 sizeAbs = SignedMath.abs(p.size);
+        uint256 liqAmount = amount == 0 ? sizeAbs : Math.min(amount, sizeAbs);
+
+        // Perform market-close against existing liquidity
+        if (p.size > 0) {
+            Order memory closeOrder = Order(0, trader, false, 0, liqAmount, liqAmount, block.timestamp, 0);
+            _matchLiquidationSell(closeOrder);
+        } else {
+            Order memory closeOrder = Order(0, trader, true, 0, liqAmount, liqAmount, block.timestamp, 0);
+            _matchLiquidationBuy(closeOrder);
+        }
+
+        // Transfer liquidation fee to liquidator
+        uint256 notional = (liqAmount * markPrice) / 1e18;
+        uint256 fee = (notional * liquidationFeeBps) / 10_000;
+        if (fee < minLiquidationFee) fee = minLiquidationFee;
+
+        if (accounts[trader].margin >= fee) {
+            accounts[trader].margin -= fee;
+            accounts[msg.sender].margin += fee;
+        } else {
+            uint256 avail = accounts[trader].margin;
+            accounts[trader].margin = 0;
+            accounts[msg.sender].margin += avail;
+        }
+
+        emit Liquidated(trader, msg.sender, liqAmount, fee);
+
+        // H-1 protection: if still unhealthy after partial fill, require full liquidation
+        Position storage pAfter = accounts[trader].position;
+        if (pAfter.size != 0) {
+            require(!canLiquidate(trader), "must fully liquidate unhealthy position");
+        }
     }
 
     /// @notice 清算卖单撮合 (市价)
     function _matchLiquidationSell(Order memory incoming) internal {
-        // TODO: 请实现此函数
+        while (incoming.amount > 0 && bestBuyId != 0) {
+            Order storage head = orders[bestBuyId];
+
+            uint256 matched = Math.min(incoming.amount, head.amount);
+            _executeTrade(head.trader, incoming.trader, head.id, 0, matched, head.price);
+
+            incoming.amount -= matched;
+            head.amount -= matched;
+
+            if (head.amount == 0) {
+                uint256 nextHead = head.next;
+                uint256 removedId = head.id;
+                if (pendingOrderCount[head.trader] > 0) pendingOrderCount[head.trader]--;
+                delete orders[bestBuyId];
+                bestBuyId = nextHead;
+                emit OrderRemoved(removedId);
+            }
+        }
     }
 
     /// @notice 清算买单撮合 (市价)
     function _matchLiquidationBuy(Order memory incoming) internal {
-        // TODO: 请实现此函数
+        while (incoming.amount > 0 && bestSellId != 0) {
+            Order storage head = orders[bestSellId];
+
+            uint256 matched = Math.min(incoming.amount, head.amount);
+            _executeTrade(incoming.trader, head.trader, 0, head.id, matched, head.price);
+
+            incoming.amount -= matched;
+            head.amount -= matched;
+
+            if (head.amount == 0) {
+                uint256 nextHead = head.next;
+                uint256 removedId = head.id;
+                if (pendingOrderCount[head.trader] > 0) pendingOrderCount[head.trader]--;
+                delete orders[bestSellId];
+                bestSellId = nextHead;
+                emit OrderRemoved(removedId);
+            }
+        }
     }
 }

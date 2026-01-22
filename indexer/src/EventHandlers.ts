@@ -5,13 +5,42 @@ import {
     Order,
     Position,
     MarginEvent,
+    Liquidation,
     LatestCandle,
+    FundingEvent
 } from "../generated";
 
 const toLower = (addr: string) => addr.toLowerCase();
 const toBigInt = (v: bigint | number) => (typeof v === "bigint" ? v : BigInt(v));
 const toUnixSeconds = (v: bigint | number) => Number(toBigInt(v));
 const abs = (v: bigint) => (v < 0n ? -v : v);
+Exchange.FundingUpdated.handler(async ({ event, context }) => {
+    const entity: FundingEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        eventType: "GLOBAL_UPDATE",
+        trader: undefined,
+        cumulativeRate: (event.params as any).cumulativeFundingRate ?? undefined,
+        payment: undefined,
+        timestamp: event.block.timestamp,
+    };
+    context.FundingEvent.set(entity);
+});
+
+Exchange.FundingPaid.handler(async ({ event, context }) => {
+    const trader = (event.params as any).trader ? toLower((event.params as any).trader) : undefined;
+    const payment = (event.params as any).payment ?? undefined;
+    const cumulativeRate = (event.params as any).cumulativeFundingRate ?? undefined;
+
+    const entity: FundingEvent = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        eventType: "USER_PAID",
+        trader,
+        cumulativeRate,
+        payment,
+        timestamp: event.block.timestamp,
+    };
+    context.FundingEvent.set(entity);
+});
 
 Exchange.MarginDeposited.handler(async ({ event, context }) => {
     const entity: MarginEvent = {
@@ -194,4 +223,31 @@ Exchange.PositionUpdated.handler(async ({ event, context }) => {
         entryPrice: event.params.entryPrice,
     };
     context.Position.set(position);
+});
+Exchange.Liquidated.handler(async ({ event, context }) => {
+    const trader = toLower(event.params.trader);
+    const liquidator = toLower(event.params.liquidator);
+
+    const entity: Liquidation = {
+        id: `${event.transaction.hash}-${event.logIndex}`,
+        trader,
+        liquidator,
+        amount: event.params.amount,
+        fee: event.params.reward,
+        timestamp: toUnixSeconds(event.block.timestamp),
+        txHash: event.transaction.hash,
+    };
+    context.Liquidation.set(entity);
+
+    // 清算后持仓应该归零或减少
+    const position = await context.Position.get(trader);
+    if (position) {
+        const newSize = position.size > 0n
+            ? position.size - event.params.amount
+            : position.size + event.params.amount;
+        context.Position.set({
+            ...position,
+            size: newSize,
+        });
+    }
 });
